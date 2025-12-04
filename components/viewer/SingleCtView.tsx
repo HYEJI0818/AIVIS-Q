@@ -34,12 +34,59 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
     setSpleenMask,
   } = useCtSessionStore();
 
-  // DrawSegmentationModal과 동일한 Drawing 컬러맵 (간=빨강, 비장=초록)
-  const MASK_DRAW_COLORMAP = {
-    R: [0, 255, 68, 68, 255],
-    G: [0, 68, 255, 68, 255],
-    B: [0, 68, 68, 255, 68],
-    labels: ["Background", "Liver", "Spleen", "L.Kidney", "R.Kidney"]
+  // 기본 마스크 컬러 (0~255)
+  const BASE_MASK_COLORS = {
+    liver: { r: 255, g: 68, b: 68 },    // 빨간색 - Liver
+    spleen: { r: 68, g: 255, b: 68 },   // 초록색 - Spleen  
+    lKidney: { r: 68, g: 68, b: 255 },  // 파란색 - L.Kidney
+    rKidney: { r: 255, g: 255, b: 68 }, // 노란색 - R.Kidney
+  };
+
+  // Brightness와 Contrast를 적용한 색상 계산 함수
+  const applyBrightnessContrast = (
+    color: { r: number; g: number; b: number },
+    brightness: number,
+    contrast: number
+  ) => {
+    // brightness: 0~100, 50이 기본
+    // contrast: 0~100, 50이 기본
+    
+    // Brightness 조절: -128 ~ +128 범위로 변환
+    const brightnessOffset = ((brightness - 50) / 50) * 128;
+    
+    // Contrast 조절: 0.5 ~ 2.0 배율로 변환
+    const contrastFactor = (contrast / 50);
+    
+    // 각 채널에 대비 적용 후 밝기 적용
+    const applyToChannel = (value: number) => {
+      // 중심점(128)을 기준으로 대비 적용
+      let adjusted = ((value - 128) * contrastFactor) + 128;
+      // 밝기 적용
+      adjusted = adjusted + brightnessOffset;
+      // 0~255 범위로 클램핑
+      return Math.max(0, Math.min(255, Math.round(adjusted)));
+    };
+
+    return {
+      r: applyToChannel(color.r),
+      g: applyToChannel(color.g),
+      b: applyToChannel(color.b),
+    };
+  };
+
+  // 현재 brightness/contrast 설정에 따른 컬러맵 생성
+  const getAdjustedColormap = (brightness: number, contrast: number) => {
+    const liver = applyBrightnessContrast(BASE_MASK_COLORS.liver, brightness, contrast);
+    const spleen = applyBrightnessContrast(BASE_MASK_COLORS.spleen, brightness, contrast);
+    const lKidney = applyBrightnessContrast(BASE_MASK_COLORS.lKidney, brightness, contrast);
+    const rKidney = applyBrightnessContrast(BASE_MASK_COLORS.rKidney, brightness, contrast);
+
+    return {
+      R: [0, liver.r, spleen.r, lKidney.r, rKidney.r],
+      G: [0, liver.g, spleen.g, lKidney.g, rKidney.g],
+      B: [0, liver.b, spleen.b, lKidney.b, rKidney.b],
+      labels: ["Background", "Liver", "Spleen", "L.Kidney", "R.Kidney"]
+    };
   };
 
   // Niivue 초기화
@@ -126,10 +173,11 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
           }]);
         }
 
-        // Drawing 활성화 및 컬러맵 설정 (DrawSegmentationModal과 동일)
+        // Drawing 활성화 및 기본 컬러맵 설정 (초기값 사용, 이후 별도 useEffect에서 업데이트)
         nv.setDrawingEnabled(true);
-        nv.setDrawColormap(MASK_DRAW_COLORMAP);
-        nv.setDrawOpacity(opacity / 100);
+        const initialColormap = getAdjustedColormap(50, 50); // 기본값으로 초기화
+        nv.setDrawColormap(initialColormap);
+        nv.setDrawOpacity(0.4); // 기본 opacity 40%
 
         // 마스크를 Drawing 레이어로 로드 (DrawSegmentationModal과 동일한 방식)
         if (maskFiles && maskFiles.length > 0) {
@@ -181,6 +229,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
     };
 
     loadCTFile();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ctFile, maskFiles, title, orientation, maskOnly]);
 
   // Segmentation mask 로드 (레거시: liverMask/spleenMask가 별도로 설정될 때)
@@ -194,10 +243,11 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
       try {
         const nv = nvRef.current!;
         
-        // Drawing 활성화 및 컬러맵 설정
+        // Drawing 활성화 및 기본 컬러맵 설정
         nv.setDrawingEnabled(true);
-        nv.setDrawColormap(MASK_DRAW_COLORMAP);
-        nv.setDrawOpacity(opacity / 100);
+        const initialColormap = getAdjustedColormap(50, 50);
+        nv.setDrawColormap(initialColormap);
+        nv.setDrawOpacity(0.4);
 
         // 첫 번째 마스크를 Drawing 레이어로 로드
         const maskToLoad = liverMask || spleenMask;
@@ -212,24 +262,29 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
     };
 
     loadLegacyMasks();
-  }, [liverMask, spleenMask, maskFiles, title, ctFile, volumeLoaded, opacity]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [liverMask, spleenMask, maskFiles, title, ctFile, volumeLoaded]);
 
-  // Mask 투명도 반영 (Drawing 레이어에 적용)
+  // Mask 컨트롤 반영 (밝기, 대비, 투명도)
   useEffect(() => {
     if (!nvRef.current || !ctFile || !volumeLoaded) return;
 
     try {
       const nv = nvRef.current;
       
+      // brightness/contrast 적용된 컬러맵 설정
+      const adjustedColormap = getAdjustedColormap(brightness, contrast);
+      nv.setDrawColormap(adjustedColormap);
+      
       // Drawing 레이어 투명도 적용
       nv.setDrawOpacity(opacity / 100);
       nv.updateGLVolume();
-      console.log(`${title}: 마스크 투명도 적용 - opacity: ${opacity}%`);
+      console.log(`${title}: 마스크 컨트롤 적용 - brightness: ${brightness}, contrast: ${contrast}, opacity: ${opacity}%`);
       
     } catch (error) {
-      console.error(`${title}: 마스크 투명도 적용 실패:`, error);
+      console.error(`${title}: 마스크 컨트롤 적용 실패:`, error);
     }
-  }, [opacity, title, ctFile, volumeLoaded]);
+  }, [brightness, contrast, opacity, title, ctFile, volumeLoaded]);
 
   // Slice 변경 핸들러
   const handleSliceChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -27,24 +27,29 @@ export default function ViewControls() {
             <label className="text-sm font-medium text-slate-300">
               마스크 밝기 (Brightness)
             </label>
-            <span className="text-sm text-[#0066CC] font-medium">
-              {brightness}
+            <span className={`text-sm font-medium ${brightness === 50 ? 'text-slate-400' : 'text-[#0066CC]'}`}>
+              {brightness > 50 ? `+${brightness - 50}` : brightness < 50 ? `${brightness - 50}` : '0'}
             </span>
           </div>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={brightness}
-            onChange={(e) => setViewControls({ brightness: parseInt(e.target.value) })}
-            className="w-full h-2 bg-[#1F2937] rounded-full appearance-none cursor-pointer
-              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 
-              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#0066CC]
-              [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full 
-              [&::-moz-range-thumb]:bg-[#0066CC] [&::-moz-range-thumb]:border-0"
-          />
+          <div className="relative">
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={brightness}
+              onChange={(e) => setViewControls({ brightness: parseInt(e.target.value) })}
+              className="w-full h-2 bg-[#1F2937] rounded-full appearance-none cursor-pointer
+                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 
+                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#0066CC]
+                [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full 
+                [&::-moz-range-thumb]:bg-[#0066CC] [&::-moz-range-thumb]:border-0"
+            />
+            {/* 중앙 기준선 표시 */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-0.5 h-3 bg-slate-600 pointer-events-none rounded-full" />
+          </div>
           <div className="flex justify-between mt-1">
             <span className="text-xs text-slate-500">어둡게</span>
+            <span className="text-xs text-slate-500">기본</span>
             <span className="text-xs text-slate-500">밝게</span>
           </div>
         </div>
@@ -55,24 +60,29 @@ export default function ViewControls() {
             <label className="text-sm font-medium text-slate-300">
               마스크 대비 (Contrast)
             </label>
-            <span className="text-sm text-[#0066CC] font-medium">
-              {contrast}
+            <span className={`text-sm font-medium ${contrast === 50 ? 'text-slate-400' : 'text-[#0066CC]'}`}>
+              {contrast > 50 ? `+${contrast - 50}` : contrast < 50 ? `${contrast - 50}` : '0'}
             </span>
           </div>
-          <input
-            type="range"
-            min="0"
-            max="100"
-            value={contrast}
-            onChange={(e) => setViewControls({ contrast: parseInt(e.target.value) })}
-            className="w-full h-2 bg-[#1F2937] rounded-full appearance-none cursor-pointer
-              [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 
-              [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#0066CC]
-              [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full 
-              [&::-moz-range-thumb]:bg-[#0066CC] [&::-moz-range-thumb]:border-0"
-          />
+          <div className="relative">
+            <input
+              type="range"
+              min="0"
+              max="100"
+              value={contrast}
+              onChange={(e) => setViewControls({ contrast: parseInt(e.target.value) })}
+              className="w-full h-2 bg-[#1F2937] rounded-full appearance-none cursor-pointer
+                [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 
+                [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[#0066CC]
+                [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full 
+                [&::-moz-range-thumb]:bg-[#0066CC] [&::-moz-range-thumb]:border-0"
+            />
+            {/* 중앙 기준선 표시 */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-0.5 h-3 bg-slate-600 pointer-events-none rounded-full" />
+          </div>
           <div className="flex justify-between mt-1">
             <span className="text-xs text-slate-500">낮음</span>
+            <span className="text-xs text-slate-500">기본</span>
             <span className="text-xs text-slate-500">높음</span>
           </div>
         </div>

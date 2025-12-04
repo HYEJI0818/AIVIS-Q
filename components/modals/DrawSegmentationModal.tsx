@@ -11,7 +11,7 @@ const HIGHLIGHTER_COLORS = [
 ];
 
 export default function DrawSegmentationModal() {
-  const { isDrawingModalOpen, closeDrawingModal, ctFile } = useCtSessionStore();
+  const { isDrawingModalOpen, closeDrawingModal, ctFile, maskFiles, opacity } = useCtSessionStore();
   const [activeTab, setActiveTab] = useState<'3d' | 'axial' | 'coronal' | 'sagittal'>('axial');
   const [tool, setTool] = useState<'pen' | 'highlighter' | 'eraser'>('pen');
   const [brushSize, setBrushSize] = useState(3);
@@ -83,7 +83,7 @@ export default function DrawSegmentationModal() {
     }
   }, [activeTab, isDrawingModalOpen]);
 
-  // CT 파일 로드
+  // CT 파일 로드 (마스크 포함)
   useEffect(() => {
     if (!nvRef.current || !ctFile || !isDrawingModalOpen) return;
 
@@ -97,11 +97,27 @@ export default function DrawSegmentationModal() {
           nvRef.current!.removeVolume(nvRef.current!.volumes[0]);
         }
 
-        // CT 파일 로드
-        await nvRef.current!.loadVolumes([{
+        // 로드할 볼륨 목록 구성 (CT 볼륨 + 마스크들)
+        const volumesToLoad: any[] = [{
           url: URL.createObjectURL(ctFile),
           name: ctFile.name
-        }]);
+        }];
+
+        // 마스크 파일들도 함께 로드 (다중 레이블 마스크 지원)
+        if (maskFiles && maskFiles.length > 0) {
+          maskFiles.forEach((maskFile) => {
+            volumesToLoad.push({
+              url: URL.createObjectURL(maskFile),
+              name: maskFile.name,
+              colormap: 'actc', // Anatomical CT colormap - 다중 레이블용
+              opacity: opacity / 100,
+            });
+            console.log(`Draw Modal: 마스크 추가 - ${maskFile.name}`);
+          });
+        }
+
+        // CT 파일 + 마스크 로드
+        await nvRef.current!.loadVolumes(volumesToLoad);
 
         // 슬라이스 범위 업데이트
         const volumes = nvRef.current!.volumes;
@@ -119,7 +135,7 @@ export default function DrawSegmentationModal() {
           }
         }
 
-        console.log(`Draw Modal: CT 파일 로드 완료`);
+        console.log(`Draw Modal: CT 파일 로드 완료 (마스크 ${maskFiles?.length || 0}개 포함)`);
       } catch (error) {
         console.error(`Draw Modal: CT 파일 로드 실패:`, error);
       } finally {
@@ -128,7 +144,7 @@ export default function DrawSegmentationModal() {
     };
 
     loadCTFile();
-  }, [ctFile, activeTab, isDrawingModalOpen]);
+  }, [ctFile, maskFiles, activeTab, isDrawingModalOpen, opacity]);
 
   // 그리기 함수
   const draw = useCallback((x: number, y: number) => {

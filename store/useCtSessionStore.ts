@@ -12,6 +12,9 @@ interface CtSessionState {
   liverMask: any | null; // liver segmentation nvImage
   spleenMask: any | null; // spleen segmentation nvImage
   
+  // 일반 마스크 파일 (파일명에 'mask'가 포함된 파일들)
+  maskFiles: File[];
+  
   // 추론 진행률
   progress: CtProgress;
   
@@ -32,6 +35,9 @@ interface CtSessionState {
   setCtNvImage: (image: any) => void;
   setLiverMask: (image: any) => void;
   setSpleenMask: (image: any) => void;
+  setMaskFiles: (files: File[]) => void;
+  addMaskFile: (file: File) => void;
+  clearMaskFiles: () => void;
   setProgress: (progress: Partial<CtProgress>) => void;
   setViewControls: (params: Partial<{ brightness: number; contrast: number; opacity: number }>) => void;
   
@@ -61,6 +67,7 @@ export const useCtSessionStore = create<CtSessionState>((set) => ({
   ctNvImage: null,
   liverMask: null,
   spleenMask: null,
+  maskFiles: [],
   progress: initialProgress,
   brightness: 50,
   contrast: 50,
@@ -81,6 +88,14 @@ export const useCtSessionStore = create<CtSessionState>((set) => ({
   setLiverMask: (image) => set({ liverMask: image }),
   
   setSpleenMask: (image) => set({ spleenMask: image }),
+  
+  setMaskFiles: (files) => set({ maskFiles: files }),
+  
+  addMaskFile: (file) => set((state) => ({ 
+    maskFiles: [...state.maskFiles, file] 
+  })),
+  
+  clearMaskFiles: () => set({ maskFiles: [] }),
   
   setProgress: (newProgress) =>
     set((state) => ({
@@ -111,6 +126,7 @@ export const useCtSessionStore = create<CtSessionState>((set) => ({
       ctNvImage: null,
       liverMask: null,
       spleenMask: null,
+      maskFiles: [],
       progress: initialProgress,
       brightness: 50,
       contrast: 50,

@@ -4,7 +4,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import { useCtSessionStore } from '@/store/useCtSessionStore';
 
 export default function CtUploadPanel() {
-  const { ctFile, setCtFile, progress, setProgress, resetSession } = useCtSessionStore();
+  const { ctFile, setCtFile, maskFiles, setMaskFiles, clearMaskFiles, progress, setProgress, resetSession } = useCtSessionStore();
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -41,6 +41,11 @@ export default function CtUploadPanel() {
     
     console.log('❌ 지원하지 않는 파일 형식');
     return false;
+  };
+
+  // 파일이 마스크 파일인지 확인 (파일명에 'mask' 포함 여부)
+  const isMaskFile = (filename: string): boolean => {
+    return filename.toLowerCase().includes('mask');
   };
 
   // 프로그레스 시뮬레이션 (각 단계 0.5초)
@@ -92,23 +97,69 @@ export default function CtUploadPanel() {
     }
   }, [ctFile, shouldStartInference, startInference]);
 
-  // 파일 처리
-  const handleFile = (file: File) => {
-    if (!isValidFile(file.name)) {
+  // 여러 파일 처리 (볼륨과 마스크 자동 분류)
+  const handleFiles = (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    
+    // 유효한 파일만 필터링
+    const validFiles = fileArray.filter(file => {
+      if (!isValidFile(file.name)) {
+        console.warn(`⚠️ 지원하지 않는 파일 형식 제외: ${file.name}`);
+        return false;
+      }
+      return true;
+    });
+
+    if (validFiles.length === 0) {
       setError(`지원하지 않는 파일 형식입니다. (지원: ${allowedExtensions.join(', ')})`);
       return;
     }
 
-    // 파일 크기 체크 (경고만, 차단은 안 함)
-    const fileSizeMB = file.size / 1024 / 1024;
-    if (fileSizeMB > 50) {
-      console.warn(`⚠️ 파일 크기가 ${fileSizeMB.toFixed(2)}MB로 큽니다. Supabase 무료 플랜은 50MB 제한이 있습니다.`);
+    setError('');
+
+    // 볼륨 파일과 마스크 파일 분류
+    const volumeFiles: File[] = [];
+    const newMaskFiles: File[] = [];
+
+    validFiles.forEach(file => {
+      const fileSizeMB = file.size / 1024 / 1024;
+      if (fileSizeMB > 50) {
+        console.warn(`⚠️ 파일 크기가 ${fileSizeMB.toFixed(2)}MB로 큽니다.`);
+      }
+
+      if (isMaskFile(file.name)) {
+        newMaskFiles.push(file);
+        console.log(`🎭 마스크 파일 감지: ${file.name} (${fileSizeMB.toFixed(2)}MB)`);
+      } else {
+        volumeFiles.push(file);
+        console.log(`📦 볼륨 파일 감지: ${file.name} (${fileSizeMB.toFixed(2)}MB)`);
+      }
+    });
+
+    // 볼륨 파일 설정 (첫 번째 볼륨 파일만 사용)
+    if (volumeFiles.length > 0) {
+      setCtFile(volumeFiles[0]);
+      if (volumeFiles.length > 1) {
+        console.warn(`⚠️ 여러 볼륨 파일 중 첫 번째 파일만 사용: ${volumeFiles[0].name}`);
+      }
     }
 
-    setError('');
-    setCtFile(file);
-    setShouldStartInference(true);
-    console.log(`✅ 파일 업로드 완료: ${file.name} (${fileSizeMB.toFixed(2)}MB)`);
+    // 마스크 파일들 설정
+    if (newMaskFiles.length > 0) {
+      setMaskFiles(newMaskFiles);
+    }
+
+    // 볼륨 파일이 있을 때만 추론 시작 플래그 설정
+    if (volumeFiles.length > 0) {
+      setShouldStartInference(true);
+    }
+
+    console.log(`✅ 파일 업로드 완료 - 볼륨: ${volumeFiles.length}개, 마스크: ${newMaskFiles.length}개`);
+  };
+
+  // 단일 파일 처리 (레거시 호환)
+  const handleFile = (file: File) => {
+    handleFiles([file]);
   };
 
   // Drag & Drop 핸들러
@@ -128,21 +179,22 @@ export default function CtUploadPanel() {
     e.stopPropagation();
     setDragActive(false);
 
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleFile(e.dataTransfer.files[0]);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFiles(e.dataTransfer.files);
     }
   };
 
-  // 파일 선택 핸들러
+  // 파일 선택 핸들러 (다중 파일 지원)
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      handleFile(e.target.files[0]);
+    if (e.target.files && e.target.files.length > 0) {
+      handleFiles(e.target.files);
     }
   };
 
   // 초기화
   const handleReset = () => {
     resetSession();
+    clearMaskFiles();
     setError('');
     setShouldStartInference(false);
     if (fileInputRef.current) {
@@ -180,6 +232,7 @@ export default function CtUploadPanel() {
           onChange={handleFileSelect}
           className="hidden"
           id="file-upload"
+          multiple
         />
         
         <div className="text-center">
@@ -189,14 +242,32 @@ export default function CtUploadPanel() {
             </svg>
           </div>
           
-          {ctFile ? (
-            <div>
-              <p className="text-sm font-medium text-[#0066CC] mb-1">
-                {ctFile.name}
-              </p>
-              <p className="text-xs text-slate-400">
-                {(ctFile.size / 1024 / 1024).toFixed(2)} MB
-              </p>
+          {ctFile || maskFiles.length > 0 ? (
+            <div className="space-y-2">
+              {/* 볼륨 파일 표시 */}
+              {ctFile && (
+                <div className="flex items-center gap-2 justify-center">
+                  <span className="px-2 py-0.5 text-xs bg-[#0066CC]/20 text-[#0066CC] rounded-full">볼륨</span>
+                  <p className="text-sm font-medium text-[#0066CC]">
+                    {ctFile.name}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    ({(ctFile.size / 1024 / 1024).toFixed(2)} MB)
+                  </p>
+                </div>
+              )}
+              {/* 마스크 파일들 표시 */}
+              {maskFiles.map((mask, index) => (
+                <div key={index} className="flex items-center gap-2 justify-center">
+                  <span className="px-2 py-0.5 text-xs bg-[#10B981]/20 text-[#10B981] rounded-full">마스크</span>
+                  <p className="text-sm font-medium text-[#10B981]">
+                    {mask.name}
+                  </p>
+                  <p className="text-xs text-slate-400">
+                    ({(mask.size / 1024 / 1024).toFixed(2)} MB)
+                  </p>
+                </div>
+              ))}
             </div>
           ) : (
             <div>
@@ -205,6 +276,9 @@ export default function CtUploadPanel() {
               </p>
               <p className="text-xs text-slate-400">
                 DICOM (.dcm), NIfTI (.nii, .nii.gz)
+              </p>
+              <p className="text-xs text-slate-500 mt-1">
+                💡 파일명에 &apos;mask&apos;가 포함되면 오버레이로 표시됩니다
               </p>
             </div>
           )}

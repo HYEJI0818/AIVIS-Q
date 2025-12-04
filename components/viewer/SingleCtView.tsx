@@ -17,12 +17,14 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
   const [currentSlice, setCurrentSlice] = useState(0);
   const [maxSlice, setMaxSlice] = useState(100);
   const [isLoading, setIsLoading] = useState(false);
+  const [volumeLoaded, setVolumeLoaded] = useState(false); // 볼륨 로드 완료 상태
 
   const {
     ctFile,
     ctNvImage,
     liverMask,
     spleenMask,
+    maskFiles,
     brightness,
     contrast,
     opacity,
@@ -30,6 +32,70 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
     setLiverMask,
     setSpleenMask,
   } = useCtSessionStore();
+
+  // 마스크용 컬러맵 배열 (순차적으로 사용)
+  const maskColorMaps = [
+    'red',      // 빨강
+    'green',    // 초록
+    'blue',     // 파랑
+    'yellow',   // 노랑
+    'cyan',     // 청록
+    'hot',      // 핫
+    'winter',   // 윈터
+    'cool',     // 쿨
+  ];
+
+  // 마스크 파일명에서 색상 결정
+  const getColorMapForMask = (filename: string, index: number): string => {
+    const lowerName = filename.toLowerCase();
+    
+    // 간(liver) → 빨간색
+    if (lowerName.includes('liver')) {
+      return 'red';
+    }
+    // 비장(spleen) → 초록색
+    if (lowerName.includes('spleen')) {
+      return 'green';
+    }
+    // 그 외는 순차적 컬러맵
+    return maskColorMaps[index % maskColorMaps.length];
+  };
+
+  // 다중 레이블 마스크용 커스텀 LUT 생성
+  // 0=배경(투명), 1=간(빨강), 2=비장(초록), 3이상=순차 색상
+  const createMultiLabelLut = (): Uint8ClampedArray => {
+    // Niivue LUT는 256 * 4 (RGBA) 크기의 Uint8ClampedArray
+    const lut = new Uint8ClampedArray(256 * 4);
+    
+    // 레이블별 색상 정의 (RGBA, 0-255)
+    const labelColors: [number, number, number, number][] = [
+      [0, 0, 0, 0],         // 0: 배경 - 완전 투명
+      [255, 80, 80, 200],   // 1: 간 - 빨간색
+      [80, 255, 80, 200],   // 2: 비장 - 초록색
+      [80, 80, 255, 200],   // 3: 파란색
+      [255, 255, 80, 200],  // 4: 노란색
+      [255, 80, 255, 200],  // 5: 마젠타
+      [80, 255, 255, 200],  // 6: 시안
+      [255, 165, 0, 200],   // 7: 오렌지
+    ];
+
+    for (let i = 0; i < 256; i++) {
+      const offset = i * 4;
+      if (i < labelColors.length) {
+        lut[offset] = labelColors[i][0];     // R
+        lut[offset + 1] = labelColors[i][1]; // G
+        lut[offset + 2] = labelColors[i][2]; // B
+        lut[offset + 3] = labelColors[i][3]; // A
+      } else {
+        // 8 이상은 순차 색상
+        lut[offset] = (i * 37) % 256;
+        lut[offset + 1] = (i * 73) % 256;
+        lut[offset + 2] = (i * 113) % 256;
+        lut[offset + 3] = 200;
+      }
+    }
+    return lut;
+  };
 
   // Niivue 초기화
   useEffect(() => {
@@ -85,11 +151,13 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
         console.log(`${title}: 볼륨 제거 완료`);
       }
       setIsLoading(false);
+      setVolumeLoaded(false); // 볼륨 로드 상태 리셋
       return;
     }
 
     const loadCTFile = async () => {
       setIsLoading(true);
+      setVolumeLoaded(false); // 로드 시작 시 리셋
       try {
         console.log(`${title}: CT 파일 로드 시작 - ${ctFile.name}`);
 
@@ -98,11 +166,29 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
           nvRef.current!.removeVolume(nvRef.current!.volumes[0]);
         }
 
-        // Niivue로 볼륨 로드 (파일명 포함)
-        await nvRef.current!.loadVolumes([{
+        // 로드할 볼륨 목록 구성 (CT 볼륨 + 마스크들)
+        const volumesToLoad: any[] = [{
           url: URL.createObjectURL(ctFile),
           name: ctFile.name
-        }]);
+        }];
+
+        // 마스크 파일들도 함께 로드 (다중 레이블 마스크 지원)
+        // 'actc' colormap은 세그멘테이션 레이블용 컬러맵
+        if (maskFiles && maskFiles.length > 0) {
+          maskFiles.forEach((maskFile) => {
+            volumesToLoad.push({
+              url: URL.createObjectURL(maskFile),
+              name: maskFile.name,
+              colormap: 'actc', // Anatomical CT colormap - 다중 레이블용
+              opacity: opacity / 100,
+            });
+            console.log(`${title}: 다중 레이블 마스크 추가 - ${maskFile.name}`);
+          });
+        }
+
+        // Niivue로 볼륨 + 마스크 함께 로드
+        await nvRef.current!.loadVolumes(volumesToLoad);
+        console.log(`${title}: 볼륨 로드 완료, 마스크 ${maskFiles?.length || 0}개 포함`);
 
         // 슬라이스 범위 업데이트
         const volumes = nvRef.current!.volumes;
@@ -118,64 +204,65 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
             setMaxSlice(volume.dims[0] - 1);
             setCurrentSlice(Math.floor(volume.dims[0] / 2));
           }
+          
+          setVolumeLoaded(true); // 볼륨 로드 완료!
         }
 
-        console.log(`${title}: CT 파일 로드 완료`);
+        console.log(`${title}: CT 파일 로드 완료 (마스크 ${maskFiles?.length || 0}개 포함)`);
       } catch (error) {
         console.error(`${title}: CT 파일 로드 실패:`, error);
+        setVolumeLoaded(false);
       } finally {
         setIsLoading(false);
       }
     };
 
     loadCTFile();
-  }, [ctFile, title, orientation]);
+  }, [ctFile, maskFiles, title, orientation, opacity]);
 
-  // Segmentation mask 로드 (간/비장)
+  // Segmentation mask 로드 (레거시: liverMask/spleenMask가 별도로 설정될 때)
   useEffect(() => {
-    if (!nvRef.current || !ctFile || nvRef.current.volumes.length === 0) return;
+    // maskFiles가 있으면 이미 볼륨 로드에서 처리됨 - 레거시 마스크만 처리
+    if (!nvRef.current || !ctFile || !volumeLoaded) return;
+    if (maskFiles && maskFiles.length > 0) return; // maskFiles 있으면 스킵
+    if (!liverMask && !spleenMask) return; // 레거시 마스크도 없으면 스킵
 
-    const loadMasks = async () => {
+    const loadLegacyMasks = async () => {
       try {
-        // 기존 오버레이 제거 (첫 번째 볼륨 제외)
-        while (nvRef.current!.volumes.length > 1) {
-          nvRef.current!.removeVolume(nvRef.current!.volumes[1]);
-        }
-
         const volumesToLoad: any[] = [];
 
-        // Liver mask 로드
         if (liverMask) {
           volumesToLoad.push({
             url: URL.createObjectURL(liverMask),
             name: 'liver_mask.nii.gz',
-            colorMap: 'green',
+            colorMap: 'red',  // 간 → 빨간색
             opacity: opacity / 100,
           });
         }
 
-        // Spleen mask 로드
         if (spleenMask) {
           volumesToLoad.push({
             url: URL.createObjectURL(spleenMask),
             name: 'spleen_mask.nii.gz',
-            colorMap: 'red',
+            colorMap: 'green',  // 비장 → 초록색
             opacity: opacity / 100,
           });
         }
 
-        // 마스크들을 한 번에 로드
         if (volumesToLoad.length > 0) {
-          await nvRef.current!.loadVolumes(volumesToLoad);
-          console.log(`${title}: Segmentation masks 로드 완료`);
+          // 기존 볼륨 유지하면서 마스크 추가
+          for (const vol of volumesToLoad) {
+            await nvRef.current!.addVolumeFromUrl(vol);
+          }
+          console.log(`${title}: 레거시 마스크 로드 완료`);
         }
       } catch (error) {
-        console.error(`${title}: Segmentation mask 로드 실패:`, error);
+        console.error(`${title}: 레거시 마스크 로드 실패:`, error);
       }
     };
 
-    loadMasks();
-  }, [liverMask, spleenMask, title, opacity, ctFile]);
+    loadLegacyMasks();
+  }, [liverMask, spleenMask, maskFiles, title, opacity, ctFile, volumeLoaded]);
 
   // Brightness/Contrast/Opacity 반영
   useEffect(() => {

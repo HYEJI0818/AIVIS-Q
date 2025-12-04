@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useCtSessionStore } from '@/store/useCtSessionStore';
 
 export default function CtUploadPanel() {
@@ -8,14 +8,89 @@ export default function CtUploadPanel() {
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [shouldStartInference, setShouldStartInference] = useState(false);
 
   // 허용된 파일 확장자
   const allowedExtensions = ['.dcm', '.nii', '.nii.gz'];
 
   // 파일 확장자 체크
   const isValidFile = (filename: string): boolean => {
-    return allowedExtensions.some(ext => filename.toLowerCase().endsWith(ext));
+    const lowerName = filename.toLowerCase();
+    console.log('🔍 파일 검증:', { filename, lowerName });
+    
+    // .nii.gz 먼저 체크 (더 구체적인 패턴 먼저)
+    if (lowerName.endsWith('.nii.gz')) {
+      console.log('✅ .nii.gz 파일 확인됨');
+      return true;
+    }
+    // .gz로 끝나면서 .nii가 포함된 경우도 허용 (예: file.nii.gz)
+    if (lowerName.endsWith('.gz') && lowerName.includes('.nii')) {
+      console.log('✅ .nii 포함된 .gz 파일 확인됨');
+      return true;
+    }
+    // .nii 파일 (압축 안 된 것)
+    if (lowerName.endsWith('.nii')) {
+      console.log('✅ .nii 파일 확인됨');
+      return true;
+    }
+    // .dcm 파일
+    if (lowerName.endsWith('.dcm')) {
+      console.log('✅ .dcm 파일 확인됨');
+      return true;
+    }
+    
+    console.log('❌ 지원하지 않는 파일 형식');
+    return false;
   };
+
+  // 프로그레스 시뮬레이션 (각 단계 0.5초)
+  const simulateProgress = useCallback((step: 'preprocessing' | 'inference' | 'postprocessing') => {
+    return new Promise<void>((resolve) => {
+      let current = 0;
+      const interval = setInterval(() => {
+        current += 10;
+        setProgress({ [step]: current });
+        
+        if (current >= 100) {
+          clearInterval(interval);
+          resolve();
+        }
+      }, 50); // 50ms * 10회 = 500ms (0.5초)
+    });
+  }, [setProgress]);
+
+  // 추론 시작 (mock simulation)
+  const startInference = useCallback(async () => {
+    if (!ctFile) {
+      setError('먼저 파일을 업로드해주세요.');
+      return;
+    }
+
+    // TODO: 실제 API 연동 필요
+    console.log('추론 시작...');
+
+    // 1단계: 전처리
+    setProgress({ preprocessing: 0, inference: 0, postprocessing: 0 });
+    await simulateProgress('preprocessing');
+
+    // 2단계: nnU-Net 추론
+    await simulateProgress('inference');
+
+    // 3단계: 결과 생성
+    await simulateProgress('postprocessing');
+
+    console.log('추론 완료!');
+    
+    // TODO: 결과 데이터 store에 저장
+  }, [ctFile, setError, setProgress, simulateProgress]);
+
+  // 파일 업로드 시 자동으로 추론 시작
+  useEffect(() => {
+    if (ctFile && shouldStartInference) {
+      setShouldStartInference(false);
+      startInference();
+    }
+  }, [ctFile, shouldStartInference, startInference]);
 
   // 파일 처리
   const handleFile = (file: File) => {
@@ -32,6 +107,7 @@ export default function CtUploadPanel() {
 
     setError('');
     setCtFile(file);
+    setShouldStartInference(true);
     console.log(`✅ 파일 업로드 완료: ${file.name} (${fileSizeMB.toFixed(2)}MB)`);
   };
 
@@ -64,65 +140,27 @@ export default function CtUploadPanel() {
     }
   };
 
-  // 추론 시작 (mock simulation)
-  const startInference = async () => {
-    if (!ctFile) {
-      setError('먼저 파일을 업로드해주세요.');
-      return;
-    }
-
-    // TODO: 실제 API 연동 필요
-    console.log('추론 시작...');
-
-    // 1단계: 전처리
-    setProgress({ preprocessing: 0, inference: 0, postprocessing: 0 });
-    await simulateProgress('preprocessing');
-
-    // 2단계: nnU-Net 추론
-    await simulateProgress('inference');
-
-    // 3단계: 결과 생성
-    await simulateProgress('postprocessing');
-
-    console.log('추론 완료!');
-    
-    // TODO: 결과 데이터 store에 저장
-    // Mock 데이터로 볼륨 메트릭 설정 예시는 메인 페이지에서 처리
-  };
-
-  // 프로그레스 시뮬레이션
-  const simulateProgress = (step: 'preprocessing' | 'inference' | 'postprocessing') => {
-    return new Promise<void>((resolve) => {
-      let current = 0;
-      const interval = setInterval(() => {
-        current += 10;
-        setProgress({ [step]: current });
-        
-        if (current >= 100) {
-          clearInterval(interval);
-          resolve();
-        }
-      }, 200);
-    });
-  };
-
   // 초기화
   const handleReset = () => {
     resetSession();
     setError('');
+    setShouldStartInference(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
     console.log('세션 초기화 완료');
   };
 
-  const isProcessing = progress.preprocessing > 0 || progress.inference > 0 || progress.postprocessing > 0;
+  // 수동 추론 시작 버튼 핸들러
+  const handleManualStart = () => {
+    startInference();
+  };
+
   const isCompleted = progress.preprocessing === 100 && progress.inference === 100 && progress.postprocessing === 100;
+  const isProcessing = (progress.preprocessing > 0 || progress.inference > 0 || progress.postprocessing > 0) && !isCompleted;
 
   return (
     <div className="rounded-2xl bg-[#0B1220] border border-white/5 shadow-sm p-5">
-      <h2 className="text-lg font-semibold mb-4">CT 파일 업로드</h2>
-
       {/* Drag & Drop 영역 */}
       <div
         className={`relative border-2 border-dashed rounded-xl p-8 transition ${
@@ -138,7 +176,7 @@ export default function CtUploadPanel() {
         <input
           ref={fileInputRef}
           type="file"
-          accept=".dcm,.nii,.nii.gz"
+          accept=".dcm,.nii,.gz,application/gzip,application/x-gzip"
           onChange={handleFileSelect}
           className="hidden"
           id="file-upload"
@@ -190,8 +228,8 @@ export default function CtUploadPanel() {
       {/* 버튼 */}
       <div className="mt-4 flex gap-3">
         <button
-          onClick={startInference}
-          disabled={!ctFile || isProcessing}
+          onClick={handleManualStart}
+          disabled={!ctFile || isProcessing || isCompleted}
           className="flex-1 py-2.5 bg-[#0066CC] hover:bg-[#004A99] disabled:bg-slate-700 disabled:text-slate-500 text-white font-semibold rounded-lg transition disabled:cursor-not-allowed"
         >
           {isProcessing ? '추론 진행 중...' : isCompleted ? '추론 완료' : '추론 시작'}
@@ -206,52 +244,50 @@ export default function CtUploadPanel() {
         </button>
       </div>
 
-      {/* 3단계 프로그레스 바 */}
-      {isProcessing && (
-        <div className="mt-5 space-y-3">
-          {/* 1. 전처리 */}
-          <div>
-            <div className="flex justify-between text-xs mb-1">
-              <span className="text-slate-300">파일 전처리</span>
-              <span className="text-[#0066CC]">{progress.preprocessing}%</span>
-            </div>
-            <div className="h-2 bg-[#111827] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[#0066CC] transition-all duration-300"
-                style={{ width: `${progress.preprocessing}%` }}
-              />
-            </div>
+      {/* 진행 상태 */}
+      <div className="mt-5 space-y-4">
+        {/* 1. 파일 전처리 */}
+        <div>
+          <div className="flex justify-between text-sm mb-2">
+            <span className="text-slate-300 font-medium">1. 파일 전처리</span>
+            <span className="text-[#0066CC] font-semibold">{progress.preprocessing}%</span>
           </div>
-
-          {/* 2. nnU-Net 추론 */}
-          <div>
-            <div className="flex justify-between text-xs mb-1">
-              <span className="text-slate-300">nnU-Net 추론</span>
-              <span className="text-[#22D3EE]">{progress.inference}%</span>
-            </div>
-            <div className="h-2 bg-[#111827] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[#0066CC] transition-all duration-300"
-                style={{ width: `${progress.inference}%` }}
-              />
-            </div>
-          </div>
-
-          {/* 3. 결과 생성 */}
-          <div>
-            <div className="flex justify-between text-xs mb-1">
-              <span className="text-slate-300">결과 생성</span>
-              <span className="text-[#22D3EE]">{progress.postprocessing}%</span>
-            </div>
-            <div className="h-2 bg-[#111827] rounded-full overflow-hidden">
-              <div
-                className="h-full bg-[#0066CC] transition-all duration-300"
-                style={{ width: `${progress.postprocessing}%` }}
-              />
-            </div>
+          <div className="h-2 bg-[#111827] rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#0066CC] transition-all duration-300"
+              style={{ width: `${progress.preprocessing}%` }}
+            />
           </div>
         </div>
-      )}
+
+        {/* 2. nnU-Net 추론 */}
+        <div>
+          <div className="flex justify-between text-sm mb-2">
+            <span className="text-slate-300 font-medium">2. nnU-Net 추론</span>
+            <span className="text-[#22D3EE] font-semibold">{progress.inference}%</span>
+          </div>
+          <div className="h-2 bg-[#111827] rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#22D3EE] transition-all duration-300"
+              style={{ width: `${progress.inference}%` }}
+            />
+          </div>
+        </div>
+
+        {/* 3. 결과 생성 */}
+        <div>
+          <div className="flex justify-between text-sm mb-2">
+            <span className="text-slate-300 font-medium">3. 결과 생성</span>
+            <span className="text-[#10B981] font-semibold">{progress.postprocessing}%</span>
+          </div>
+          <div className="h-2 bg-[#111827] rounded-full overflow-hidden">
+            <div
+              className="h-full bg-[#10B981] transition-all duration-300"
+              style={{ width: `${progress.postprocessing}%` }}
+            />
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

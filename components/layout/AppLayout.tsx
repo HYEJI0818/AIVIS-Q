@@ -2,10 +2,11 @@ import React from 'react';
 
 interface AppLayoutProps {
   left: React.ReactNode;
+  center: React.ReactNode;
   right: React.ReactNode;
 }
 
-export default function AppLayout({ left, right }: AppLayoutProps) {
+export default function AppLayout({ left, center, right }: AppLayoutProps) {
   return (
     <div className="min-h-screen bg-[#020617] text-slate-100 flex flex-col">
       {/* 헤더 */}
@@ -29,14 +30,19 @@ export default function AppLayout({ left, right }: AppLayoutProps) {
         </div>
       </header>
 
-      {/* 메인 영역 */}
+      {/* 메인 영역 (3칼럼) */}
       <main className="flex-1 flex gap-4 px-6 py-4 min-h-0">
-        {/* 좌측 컬럼: 메인 워크스페이스 */}
-        <section className="flex-1 flex flex-col gap-4 min-w-0 min-h-0">
+        {/* 좌측 컬럼: 업로드 및 추론 제어 */}
+        <aside className="w-[320px] shrink-0 flex flex-col gap-4 overflow-y-auto">
           {left}
+        </aside>
+
+        {/* 중앙 컬럼: 뷰어 워크스페이스 */}
+        <section className="flex-1 flex flex-col gap-4 min-w-0 min-h-0">
+          {center}
         </section>
 
-        {/* 우측 컬럼: 사이드패널 */}
+        {/* 우측 컬럼: 정보 패널 */}
         <aside className="w-[320px] shrink-0 flex flex-col gap-4 overflow-y-auto">
           {right}
         </aside>

@@ -44,14 +44,17 @@ export default function MainPage() {
       <AppLayout
         left={
           <>
-            {/* 업로드 패널 */}
+            {/* 업로드 및 추론 제어 */}
             <CtUploadPanel />
-            
-            {/* 4분할 뷰어 (flex-1로 남은 공간 차지) */}
-            <MultiViewCtViewer />
             
             {/* 뷰 컨트롤 */}
             <ViewControls />
+          </>
+        }
+        center={
+          <>
+            {/* 4분할 뷰어 (flex-1로 남은 공간 차지) */}
+            <MultiViewCtViewer />
           </>
         }
         right={

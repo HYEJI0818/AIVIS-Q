@@ -107,7 +107,6 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
 
     try {
       const nv = new Niivue({
-        logging: false,
         dragAndDropEnabled: false,
         backColor: [0.02, 0.06, 0.09, 1], // #020617 in RGBA
         show3Dcrosshair: true,
@@ -210,15 +209,18 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
         const volumes = nvRef.current!.volumes;
         if (volumes.length > 0) {
           const volume = volumes[0];
-          if (orientation === 'axial') {
-            setMaxSlice(volume.dims[2] - 1);
-            setCurrentSlice(Math.floor(volume.dims[2] / 2));
-          } else if (orientation === 'coronal') {
-            setMaxSlice(volume.dims[1] - 1);
-            setCurrentSlice(Math.floor(volume.dims[1] / 2));
-          } else if (orientation === 'sagittal') {
-            setMaxSlice(volume.dims[0] - 1);
-            setCurrentSlice(Math.floor(volume.dims[0] / 2));
+          const dims = volume.dims;
+          if (dims && dims.length >= 3) {
+            if (orientation === 'axial') {
+              setMaxSlice(dims[2] - 1);
+              setCurrentSlice(Math.floor(dims[2] / 2));
+            } else if (orientation === 'coronal') {
+              setMaxSlice(dims[1] - 1);
+              setCurrentSlice(Math.floor(dims[1] / 2));
+            } else if (orientation === 'sagittal') {
+              setMaxSlice(dims[0] - 1);
+              setCurrentSlice(Math.floor(dims[0] / 2));
+            }
           }
           
           // 마스크 볼륨의 원본 cal_min/cal_max 저장
@@ -226,8 +228,8 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
           const maskStartIndex = maskOnly ? 0 : 1;
           for (let i = maskStartIndex; i < volumes.length; i++) {
             maskOriginalCalRef.current.set(i, {
-              calMin: volumes[i].cal_min,
-              calMax: volumes[i].cal_max
+              calMin: volumes[i].cal_min ?? 0,
+              calMax: volumes[i].cal_max ?? 1
             });
           }
           

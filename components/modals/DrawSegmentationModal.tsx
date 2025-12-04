@@ -55,7 +55,6 @@ export default function DrawSegmentationModal() {
 
     try {
       const nv = new Niivue({
-        logging: false,
         dragAndDropEnabled: false,
         backColor: [0, 0, 0, 1],
         show3Dcrosshair: true,
@@ -123,15 +122,18 @@ export default function DrawSegmentationModal() {
         const volumes = nvRef.current!.volumes;
         if (volumes.length > 0) {
           const volume = volumes[0];
-          if (activeTab === 'axial') {
-            setMaxSlice(volume.dims[2] - 1);
-            setSliceIndex(Math.floor(volume.dims[2] / 2));
-          } else if (activeTab === 'coronal') {
-            setMaxSlice(volume.dims[1] - 1);
-            setSliceIndex(Math.floor(volume.dims[1] / 2));
-          } else if (activeTab === 'sagittal') {
-            setMaxSlice(volume.dims[0] - 1);
-            setSliceIndex(Math.floor(volume.dims[0] / 2));
+          const dims = volume.dims;
+          if (dims && dims.length >= 3) {
+            if (activeTab === 'axial') {
+              setMaxSlice(dims[2] - 1);
+              setSliceIndex(Math.floor(dims[2] / 2));
+            } else if (activeTab === 'coronal') {
+              setMaxSlice(dims[1] - 1);
+              setSliceIndex(Math.floor(dims[1] / 2));
+            } else if (activeTab === 'sagittal') {
+              setMaxSlice(dims[0] - 1);
+              setSliceIndex(Math.floor(dims[0] / 2));
+            }
           }
         }
 

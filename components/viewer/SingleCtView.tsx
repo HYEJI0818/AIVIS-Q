@@ -176,6 +176,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
         // Drawing 활성화 및 기본 컬러맵 설정 (초기값 사용, 이후 별도 useEffect에서 업데이트)
         nv.setDrawingEnabled(true);
         const initialColormap = getAdjustedColormap(50, 50); // 기본값으로 초기화
+        // @ts-expect-error - Niivue setDrawColormap accepts object but typed as string
         nv.setDrawColormap(initialColormap);
         nv.setDrawOpacity(0.4); // 기본 opacity 40%
 
@@ -246,6 +247,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
         // Drawing 활성화 및 기본 컬러맵 설정
         nv.setDrawingEnabled(true);
         const initialColormap = getAdjustedColormap(50, 50);
+        // @ts-expect-error - Niivue setDrawColormap accepts object but typed as string
         nv.setDrawColormap(initialColormap);
         nv.setDrawOpacity(0.4);
 
@@ -274,6 +276,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
       
       // brightness/contrast 적용된 컬러맵 설정
       const adjustedColormap = getAdjustedColormap(brightness, contrast);
+      // @ts-expect-error - Niivue setDrawColormap accepts object but typed as string
       nv.setDrawColormap(adjustedColormap);
       
       // Drawing 레이어 투명도 적용

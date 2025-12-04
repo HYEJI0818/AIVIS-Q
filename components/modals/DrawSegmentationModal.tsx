@@ -172,6 +172,7 @@ export default function DrawSegmentationModal() {
         // Drawing 활성화
         nv.setDrawingEnabled(true);
         nv.setDrawOpacity(drawOpacity / 100);
+        // @ts-expect-error - Niivue setDrawColormap accepts object but typed as string
         nv.setDrawColormap(MASK_DRAW_COLORMAP);
 
         // 마스크를 drawing 레이어로 로드
@@ -186,7 +187,7 @@ export default function DrawSegmentationModal() {
             setIsMaskLoaded(true);
             console.log('마스크 로드 완료');
             
-            if (nv.volumes.length > 0) {
+            if (nv.volumes.length > 0 && nv.volumes[0].dims) {
               volumeDimsRef.current = nv.volumes[0].dims;
             }
           } catch (error) {
@@ -249,6 +250,9 @@ export default function DrawSegmentationModal() {
     if (!nvRef.current || !nvRef.current.drawBitmap) return;
     
     const nv = nvRef.current;
+    const drawBitmap = nv.drawBitmap;
+    if (!drawBitmap) return;
+    
     const dims = volumeDimsRef.current;
     
     if (!dims || dims.length < 4) return;
@@ -279,8 +283,8 @@ export default function DrawSegmentationModal() {
           
           for (let z = 0; z < dimZ; z++) {
             const idx = vx + vy * dimX + z * dimX * dimY;
-            if (idx >= 0 && idx < nv.drawBitmap.length) {
-              nv.drawBitmap[idx] = penValue;
+            if (idx >= 0 && idx < drawBitmap.length) {
+              drawBitmap[idx] = penValue;
             }
           }
         }
@@ -300,8 +304,8 @@ export default function DrawSegmentationModal() {
           
           for (let y = 0; y < dimY; y++) {
             const idx = vx + y * dimX + vz * dimX * dimY;
-            if (idx >= 0 && idx < nv.drawBitmap.length) {
-              nv.drawBitmap[idx] = penValue;
+            if (idx >= 0 && idx < drawBitmap.length) {
+              drawBitmap[idx] = penValue;
             }
           }
         }
@@ -321,8 +325,8 @@ export default function DrawSegmentationModal() {
           
           for (let x = 0; x < dimX; x++) {
             const idx = x + vy * dimX + vz * dimX * dimY;
-            if (idx >= 0 && idx < nv.drawBitmap.length) {
-              nv.drawBitmap[idx] = penValue;
+            if (idx >= 0 && idx < drawBitmap.length) {
+              drawBitmap[idx] = penValue;
             }
           }
         }
@@ -439,6 +443,7 @@ export default function DrawSegmentationModal() {
     try {
       const nv = nvRef.current;
       
+      // @ts-expect-error - Niivue saveImage typing issue
       nv.saveImage({ 
         filename: `edited_mask_${Date.now()}.nii`, 
         isSaveDrawing: true 

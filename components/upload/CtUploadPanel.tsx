@@ -278,7 +278,8 @@ export default function CtUploadPanel() {
                 DICOM (.dcm), NIfTI (.nii, .nii.gz)
               </p>
               <p className="text-xs text-slate-500 mt-1">
-                💡 파일명에 &apos;mask&apos;가 포함되면 오버레이로 표시됩니다
+                파일명에 &apos;mask&apos;가 포함되면<br />
+                overlay로 표시됩니다.
               </p>
             </div>
           )}

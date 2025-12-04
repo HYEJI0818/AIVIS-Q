@@ -8,7 +8,7 @@ export default function ViewControls() {
   return (
     <div className="rounded-2xl bg-[#0B1220] border border-white/5 shadow-sm p-5">
       <div className="flex justify-between items-center mb-4">
-        <h2 className="text-sm font-semibold text-slate-300">Tumor Controller</h2>
+        <h2 className="text-sm font-semibold text-slate-300">Controller</h2>
         <button
           onClick={openDrawingModal}
           className="px-3 py-1.5 bg-[#0066CC] hover:bg-[#004A99] text-white text-xs font-medium rounded-lg transition flex items-center gap-1.5"

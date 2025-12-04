@@ -318,7 +318,7 @@ export default function DrawSegmentationModal() {
       <div className="w-[90vw] max-w-[1400px] h-[85vh] bg-[#0B1220] rounded-2xl border border-white/10 shadow-2xl flex flex-col">
         {/* 헤더 */}
         <div className="flex justify-between items-center px-6 py-4 border-b border-white/5">
-          <h2 className="text-xl font-semibold text-slate-100">Tumor Drawing</h2>
+          <h2 className="text-xl font-semibold text-slate-100">Drawing</h2>
           <button
             onClick={closeDrawingModal}
             className="p-2 hover:bg-white/5 rounded-lg transition"

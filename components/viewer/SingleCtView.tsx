@@ -19,9 +19,6 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
   const [maxSlice, setMaxSlice] = useState(100);
   const [isLoading, setIsLoading] = useState(false);
   const [volumeLoaded, setVolumeLoaded] = useState(false); // 볼륨 로드 완료 상태
-  
-  // 마스크 볼륨의 원본 cal_min/cal_max 저장 (밝기/대비 계산 기준)
-  const maskOriginalCalRef = useRef<Map<number, { calMin: number; calMax: number }>>(new Map());
 
   const {
     ctFile,
@@ -37,68 +34,12 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
     setSpleenMask,
   } = useCtSessionStore();
 
-  // 마스크용 컬러맵 배열 (순차적으로 사용)
-  const maskColorMaps = [
-    'red',      // 빨강
-    'green',    // 초록
-    'blue',     // 파랑
-    'yellow',   // 노랑
-    'cyan',     // 청록
-    'hot',      // 핫
-    'winter',   // 윈터
-    'cool',     // 쿨
-  ];
-
-  // 마스크 파일명에서 색상 결정
-  const getColorMapForMask = (filename: string, index: number): string => {
-    const lowerName = filename.toLowerCase();
-    
-    // 간(liver) → 빨간색
-    if (lowerName.includes('liver')) {
-      return 'red';
-    }
-    // 비장(spleen) → 초록색
-    if (lowerName.includes('spleen')) {
-      return 'green';
-    }
-    // 그 외는 순차적 컬러맵
-    return maskColorMaps[index % maskColorMaps.length];
-  };
-
-  // 다중 레이블 마스크용 커스텀 LUT 생성
-  // 0=배경(투명), 1=간(빨강), 2=비장(초록), 3이상=순차 색상
-  const createMultiLabelLut = (): Uint8ClampedArray => {
-    // Niivue LUT는 256 * 4 (RGBA) 크기의 Uint8ClampedArray
-    const lut = new Uint8ClampedArray(256 * 4);
-    
-    // 레이블별 색상 정의 (RGBA, 0-255)
-    const labelColors: [number, number, number, number][] = [
-      [0, 0, 0, 0],         // 0: 배경 - 완전 투명
-      [255, 80, 80, 200],   // 1: 간 - 빨간색
-      [80, 255, 80, 200],   // 2: 비장 - 초록색
-      [80, 80, 255, 200],   // 3: 파란색
-      [255, 255, 80, 200],  // 4: 노란색
-      [255, 80, 255, 200],  // 5: 마젠타
-      [80, 255, 255, 200],  // 6: 시안
-      [255, 165, 0, 200],   // 7: 오렌지
-    ];
-
-    for (let i = 0; i < 256; i++) {
-      const offset = i * 4;
-      if (i < labelColors.length) {
-        lut[offset] = labelColors[i][0];     // R
-        lut[offset + 1] = labelColors[i][1]; // G
-        lut[offset + 2] = labelColors[i][2]; // B
-        lut[offset + 3] = labelColors[i][3]; // A
-      } else {
-        // 8 이상은 순차 색상
-        lut[offset] = (i * 37) % 256;
-        lut[offset + 1] = (i * 73) % 256;
-        lut[offset + 2] = (i * 113) % 256;
-        lut[offset + 3] = 200;
-      }
-    }
-    return lut;
+  // DrawSegmentationModal과 동일한 Drawing 컬러맵 (간=빨강, 비장=초록)
+  const MASK_DRAW_COLORMAP = {
+    R: [0, 255, 68, 68, 255],
+    G: [0, 68, 255, 68, 255],
+    B: [0, 68, 68, 255, 68],
+    labels: ["Background", "Liver", "Spleen", "L.Kidney", "R.Kidney"]
   };
 
   // Niivue 초기화
@@ -163,50 +104,46 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
       setVolumeLoaded(false); // 로드 시작 시 리셋
       try {
         console.log(`${title}: CT 파일 로드 시작 - ${ctFile.name}`);
+        const nv = nvRef.current!;
 
         // 기존 볼륨이 있으면 모두 제거
-        while (nvRef.current!.volumes.length > 0) {
-          nvRef.current!.removeVolume(nvRef.current!.volumes[0]);
+        while (nv.volumes.length > 0) {
+          nv.removeVolume(nv.volumes[0]);
         }
 
-        // 로드할 볼륨 목록 구성
-        const volumesToLoad: any[] = [];
-
-        // maskOnly가 아닐 때만 CT 볼륨 추가
+        // CT 볼륨 로드 (maskOnly가 아닐 때만)
         if (!maskOnly) {
-          volumesToLoad.push({
+          await nv.loadVolumes([{
             url: URL.createObjectURL(ctFile),
             name: ctFile.name
-          });
+          }]);
+        } else {
+          // maskOnly일 때도 CT를 로드해야 Drawing이 표시됨
+          await nv.loadVolumes([{
+            url: URL.createObjectURL(ctFile),
+            name: ctFile.name,
+            opacity: 0 // CT는 숨김
+          }]);
         }
 
-        // 마스크 파일들 로드 (다중 레이블 마스크 지원)
-        // 'actc' colormap은 세그멘테이션 레이블용 컬러맵
+        // Drawing 활성화 및 컬러맵 설정 (DrawSegmentationModal과 동일)
+        nv.setDrawingEnabled(true);
+        nv.setDrawColormap(MASK_DRAW_COLORMAP);
+        nv.setDrawOpacity(opacity / 100);
+
+        // 마스크를 Drawing 레이어로 로드 (DrawSegmentationModal과 동일한 방식)
         if (maskFiles && maskFiles.length > 0) {
-          maskFiles.forEach((maskFile) => {
-            volumesToLoad.push({
-              url: URL.createObjectURL(maskFile),
-              name: maskFile.name,
-              colormap: 'actc', // Anatomical CT colormap - 다중 레이블용
-              opacity: maskOnly ? 1 : 0.4, // 초기값 40%, 이후 컨트롤러에서 조절
-            });
-            console.log(`${title}: 다중 레이블 마스크 추가 - ${maskFile.name}`);
-          });
+          const maskUrl = URL.createObjectURL(maskFiles[0]);
+          try {
+            await nv.loadDrawingFromUrl(maskUrl);
+            console.log(`${title}: 마스크 Drawing 레이어 로드 완료`);
+          } catch (error) {
+            console.error(`${title}: 마스크 Drawing 로드 실패:`, error);
+          }
         }
-
-        // 로드할 볼륨이 없으면 스킵 (maskOnly인데 마스크가 없는 경우)
-        if (volumesToLoad.length === 0) {
-          console.log(`${title}: 로드할 볼륨 없음`);
-          setIsLoading(false);
-          return;
-        }
-
-        // Niivue로 볼륨 + 마스크 함께 로드
-        await nvRef.current!.loadVolumes(volumesToLoad);
-        console.log(`${title}: 볼륨 로드 완료, 마스크 ${maskFiles?.length || 0}개 포함, maskOnly: ${maskOnly}`);
 
         // 슬라이스 범위 업데이트
-        const volumes = nvRef.current!.volumes;
+        const volumes = nv.volumes;
         if (volumes.length > 0) {
           const volume = volumes[0];
           const dims = volume.dims;
@@ -221,16 +158,6 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
               setMaxSlice(dims[0] - 1);
               setCurrentSlice(Math.floor(dims[0] / 2));
             }
-          }
-          
-          // 마스크 볼륨의 원본 cal_min/cal_max 저장
-          maskOriginalCalRef.current.clear();
-          const maskStartIndex = maskOnly ? 0 : 1;
-          for (let i = maskStartIndex; i < volumes.length; i++) {
-            maskOriginalCalRef.current.set(i, {
-              calMin: volumes[i].cal_min ?? 0,
-              calMax: volumes[i].cal_max ?? 1
-            });
           }
           
           setVolumeLoaded(true); // 볼륨 로드 완료!
@@ -257,32 +184,19 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
 
     const loadLegacyMasks = async () => {
       try {
-        const volumesToLoad: any[] = [];
+        const nv = nvRef.current!;
+        
+        // Drawing 활성화 및 컬러맵 설정
+        nv.setDrawingEnabled(true);
+        nv.setDrawColormap(MASK_DRAW_COLORMAP);
+        nv.setDrawOpacity(opacity / 100);
 
-        if (liverMask) {
-          volumesToLoad.push({
-            url: URL.createObjectURL(liverMask),
-            name: 'liver_mask.nii.gz',
-            colorMap: 'red',  // 간 → 빨간색
-            opacity: 0.4, // 초기값 40%, 이후 컨트롤러에서 조절
-          });
-        }
-
-        if (spleenMask) {
-          volumesToLoad.push({
-            url: URL.createObjectURL(spleenMask),
-            name: 'spleen_mask.nii.gz',
-            colorMap: 'green',  // 비장 → 초록색
-            opacity: 0.4, // 초기값 40%, 이후 컨트롤러에서 조절
-          });
-        }
-
-        if (volumesToLoad.length > 0) {
-          // 기존 볼륨 유지하면서 마스크 추가
-          for (const vol of volumesToLoad) {
-            await nvRef.current!.addVolumeFromUrl(vol);
-          }
-          console.log(`${title}: 레거시 마스크 로드 완료`);
+        // 첫 번째 마스크를 Drawing 레이어로 로드
+        const maskToLoad = liverMask || spleenMask;
+        if (maskToLoad) {
+          const maskUrl = URL.createObjectURL(maskToLoad);
+          await nv.loadDrawingFromUrl(maskUrl);
+          console.log(`${title}: 레거시 마스크 Drawing 레이어 로드 완료`);
         }
       } catch (error) {
         console.error(`${title}: 레거시 마스크 로드 실패:`, error);
@@ -290,55 +204,24 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
     };
 
     loadLegacyMasks();
-  }, [liverMask, spleenMask, maskFiles, title, ctFile, volumeLoaded]);
+  }, [liverMask, spleenMask, maskFiles, title, ctFile, volumeLoaded, opacity]);
 
-  // Mask 밝기/대비/투명도 반영 (마스크에만 적용, CT 볼륨은 변경 안함)
+  // Mask 투명도 반영 (Drawing 레이어에 적용)
   useEffect(() => {
     if (!nvRef.current || !ctFile || !volumeLoaded) return;
-    if (nvRef.current.volumes.length === 0) return;
 
     try {
       const nv = nvRef.current;
       
-      // maskOnly면 index 0부터, 아니면 index 1부터 마스크
-      const maskStartIndex = maskOnly ? 0 : 1;
-      
-      // 마스크 볼륨이 없으면 스킵
-      if (maskStartIndex >= nv.volumes.length) return;
-
-      // 마스크 볼륨에만 밝기/대비/투명도 적용
-      for (let i = maskStartIndex; i < nv.volumes.length; i++) {
-        const maskVolume = nv.volumes[i];
-        
-        // Opacity 적용 (마스크에만)
-        maskVolume.opacity = opacity / 100;
-        
-        // 원본 cal 값 가져오기 (저장된 값이 없으면 스킵)
-        const originalCal = maskOriginalCalRef.current.get(i);
-        if (originalCal) {
-          const { calMin, calMax } = originalCal;
-          const range = calMax - calMin;
-          const center = (calMax + calMin) / 2;
-          
-          // Brightness: 중심값 이동 (-50 ~ +50)
-          const brightnessOffset = ((brightness - 50) / 50) * range * 0.5;
-          
-          // Contrast: 범위 조정 (0.5 ~ 2.0)
-          const contrastFactor = 0.5 + (contrast / 100) * 1.5;
-          const newRange = range / contrastFactor;
-          
-          maskVolume.cal_min = center + brightnessOffset - newRange / 2;
-          maskVolume.cal_max = center + brightnessOffset + newRange / 2;
-        }
-      }
-
+      // Drawing 레이어 투명도 적용
+      nv.setDrawOpacity(opacity / 100);
       nv.updateGLVolume();
-      console.log(`${title}: 마스크 컨트롤 적용 - opacity: ${opacity}%, brightness: ${brightness}, contrast: ${contrast}`);
+      console.log(`${title}: 마스크 투명도 적용 - opacity: ${opacity}%`);
       
     } catch (error) {
-      console.error(`${title}: 마스크 컨트롤 적용 실패:`, error);
+      console.error(`${title}: 마스크 투명도 적용 실패:`, error);
     }
-  }, [brightness, contrast, opacity, title, ctFile, maskOnly, volumeLoaded]);
+  }, [opacity, title, ctFile, volumeLoaded]);
 
   // Slice 변경 핸들러
   const handleSliceChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -72,19 +72,37 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
 
   // CT 파일 로드 (NIfTI/DICOM)
   useEffect(() => {
-    if (!nvRef.current || !ctFile) return;
+    if (!nvRef.current) return;
+
+    // ctFile이 null이면 모든 볼륨 제거 (초기화)
+    if (!ctFile) {
+      if (nvRef.current.volumes.length > 0) {
+        // 모든 볼륨 제거
+        while (nvRef.current.volumes.length > 0) {
+          nvRef.current.removeVolume(nvRef.current.volumes[0]);
+        }
+        nvRef.current.updateGLVolume();
+        console.log(`${title}: 볼륨 제거 완료`);
+      }
+      setIsLoading(false);
+      return;
+    }
 
     const loadCTFile = async () => {
       setIsLoading(true);
       try {
         console.log(`${title}: CT 파일 로드 시작 - ${ctFile.name}`);
 
-        // File을 ArrayBuffer로 변환
-        const arrayBuffer = await ctFile.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
+        // 기존 볼륨이 있으면 모두 제거
+        while (nvRef.current!.volumes.length > 0) {
+          nvRef.current!.removeVolume(nvRef.current!.volumes[0]);
+        }
 
-        // Niivue로 볼륨 로드
-        await nvRef.current!.loadFromArrayBuffer(uint8Array, ctFile.name);
+        // Niivue로 볼륨 로드 (파일명 포함)
+        await nvRef.current!.loadVolumes([{
+          url: URL.createObjectURL(ctFile),
+          name: ctFile.name
+        }]);
 
         // 슬라이스 범위 업데이트
         const volumes = nvRef.current!.volumes;
@@ -115,7 +133,7 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
 
   // Segmentation mask 로드 (간/비장)
   useEffect(() => {
-    if (!nvRef.current || nvRef.current.volumes.length === 0) return;
+    if (!nvRef.current || !ctFile || nvRef.current.volumes.length === 0) return;
 
     const loadMasks = async () => {
       try {
@@ -124,47 +142,44 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
           nvRef.current!.removeVolume(nvRef.current!.volumes[1]);
         }
 
+        const volumesToLoad: any[] = [];
+
         // Liver mask 로드
         if (liverMask) {
-          const liverArrayBuffer = await liverMask.arrayBuffer();
-          const liverUint8 = new Uint8Array(liverArrayBuffer);
-          await nvRef.current!.loadFromArrayBuffer(liverUint8, 'liver_mask.nii');
-          
-          // 간 색상: 초록색 (#22C55E)
-          if (nvRef.current!.volumes.length > 1) {
-            nvRef.current!.volumes[1].colorMap = 'green';
-            nvRef.current!.volumes[1].opacity = opacity / 100;
-          }
-          console.log(`${title}: Liver mask 로드 완료`);
+          volumesToLoad.push({
+            url: URL.createObjectURL(liverMask),
+            name: 'liver_mask.nii.gz',
+            colorMap: 'green',
+            opacity: opacity / 100,
+          });
         }
 
         // Spleen mask 로드
         if (spleenMask) {
-          const spleenArrayBuffer = await spleenMask.arrayBuffer();
-          const spleenUint8 = new Uint8Array(spleenArrayBuffer);
-          await nvRef.current!.loadFromArrayBuffer(spleenUint8, 'spleen_mask.nii');
-          
-          // 비장 색상: 빨간색 (#EF4444)
-          const maskIndex = liverMask ? 2 : 1;
-          if (nvRef.current!.volumes.length > maskIndex) {
-            nvRef.current!.volumes[maskIndex].colorMap = 'red';
-            nvRef.current!.volumes[maskIndex].opacity = opacity / 100;
-          }
-          console.log(`${title}: Spleen mask 로드 완료`);
+          volumesToLoad.push({
+            url: URL.createObjectURL(spleenMask),
+            name: 'spleen_mask.nii.gz',
+            colorMap: 'red',
+            opacity: opacity / 100,
+          });
         }
 
-        nvRef.current!.updateGLVolume();
+        // 마스크들을 한 번에 로드
+        if (volumesToLoad.length > 0) {
+          await nvRef.current!.loadVolumes(volumesToLoad);
+          console.log(`${title}: Segmentation masks 로드 완료`);
+        }
       } catch (error) {
         console.error(`${title}: Segmentation mask 로드 실패:`, error);
       }
     };
 
     loadMasks();
-  }, [liverMask, spleenMask, title, opacity]);
+  }, [liverMask, spleenMask, title, opacity, ctFile]);
 
   // Brightness/Contrast/Opacity 반영
   useEffect(() => {
-    if (!nvRef.current || nvRef.current.volumes.length === 0) return;
+    if (!nvRef.current || !ctFile || nvRef.current.volumes.length === 0) return;
 
     try {
       const nv = nvRef.current;
@@ -195,7 +210,7 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
     } catch (error) {
       console.error(`${title}: 뷰 컨트롤 적용 실패:`, error);
     }
-  }, [brightness, contrast, opacity, title]);
+  }, [brightness, contrast, opacity, title, ctFile]);
 
   // Slice 변경 핸들러
   const handleSliceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -226,27 +241,29 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
   };
 
   return (
-    <div className="flex flex-col h-full bg-[#020617] rounded-lg border border-white/5 p-3">
+    <div className="flex flex-col bg-[#020617] rounded-lg border border-white/5 p-3 min-h-0 overflow-hidden">
       {/* 상단: 제목 + 확대 버튼 */}
       <div className="flex justify-between items-center mb-2">
         <h3 className="text-sm font-medium text-slate-300">{title}</h3>
-        <button
-          onClick={handleFullscreen}
-          className="p-1.5 hover:bg-white/5 rounded transition"
-          title="확대"
-        >
-          <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-          </svg>
-        </button>
+        {ctFile && (
+          <button
+            onClick={handleFullscreen}
+            className="p-1.5 hover:bg-white/5 rounded transition"
+            title="확대"
+          >
+            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {/* 중앙: Canvas */}
-      <div className="flex-1 relative bg-black rounded overflow-hidden">
+      <div className="flex-1 relative bg-black rounded overflow-hidden min-h-0">
         <canvas
           ref={canvasRef}
           id={`canvas-${id}`}
-          className="w-full h-full"
+          className="absolute inset-0 w-full h-full"
         />
         
         {/* Placeholder (CT 파일이 없을 때) */}
@@ -272,9 +289,9 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
         )}
       </div>
 
-      {/* 하단: Slice 슬라이더 (3D 제외) */}
-      {orientation !== '3d' && (
-        <div className="mt-3">
+      {/* 하단: Slice 슬라이더 (3D는 숨김 처리하지만 공간은 유지) */}
+      <div className="mt-3 h-[1.25rem]">
+        {orientation !== '3d' && ctFile && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-400 w-12">Slice</span>
             <input
@@ -293,8 +310,8 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
               {currentSlice}/{maxSlice}
             </span>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }

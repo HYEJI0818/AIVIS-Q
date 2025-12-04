@@ -143,20 +143,28 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
         }
 
         // 슬라이스 범위 업데이트
+        // NIfTI dims: dims[0]=차원 개수, dims[1]=X(sagittal), dims[2]=Y(coronal), dims[3]=Z(axial)
         const volumes = nv.volumes;
         if (volumes.length > 0) {
           const volume = volumes[0];
           const dims = volume.dims;
-          if (dims && dims.length >= 3) {
+          console.log(`${title}: Volume dims =`, dims); // 디버그: 실제 dims 값 확인
+          if (dims && dims.length >= 4) {
             if (orientation === 'axial') {
+              // Z dimension (axial slices)
+              console.log(`${title}: Axial using dims[3] = ${dims[3]}`);
+              setMaxSlice(dims[3] - 1);
+              setCurrentSlice(Math.floor(dims[3] / 2));
+            } else if (orientation === 'coronal') {
+              // Y dimension (coronal slices)
+              console.log(`${title}: Coronal using dims[2] = ${dims[2]}`);
               setMaxSlice(dims[2] - 1);
               setCurrentSlice(Math.floor(dims[2] / 2));
-            } else if (orientation === 'coronal') {
+            } else if (orientation === 'sagittal') {
+              // X dimension (sagittal slices)
+              console.log(`${title}: Sagittal using dims[1] = ${dims[1]}`);
               setMaxSlice(dims[1] - 1);
               setCurrentSlice(Math.floor(dims[1] / 2));
-            } else if (orientation === 'sagittal') {
-              setMaxSlice(dims[0] - 1);
-              setCurrentSlice(Math.floor(dims[0] / 2));
             }
           }
           
@@ -318,7 +326,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
                 [&::-moz-range-thumb]:bg-[#0066CC] [&::-moz-range-thumb]:border-0"
             />
             <span className="text-xs text-slate-400 w-16 text-right">
-              {currentSlice}/{maxSlice}
+              {currentSlice + 1}/{maxSlice + 1}
             </span>
           </div>
         )}

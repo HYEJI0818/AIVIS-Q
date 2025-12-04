@@ -9,9 +9,10 @@ interface SingleCtViewProps {
   id: string;
   title: string;
   orientation: ViewOrientation;
+  maskOnly?: boolean; // true일 경우 mask만 표시 (CT 원본 숨김)
 }
 
-export default function SingleCtView({ id, title, orientation }: SingleCtViewProps) {
+export default function SingleCtView({ id, title, orientation, maskOnly = false }: SingleCtViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nvRef = useRef<Niivue | null>(null);
   const [currentSlice, setCurrentSlice] = useState(0);
@@ -166,13 +167,18 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
           nvRef.current!.removeVolume(nvRef.current!.volumes[0]);
         }
 
-        // 로드할 볼륨 목록 구성 (CT 볼륨 + 마스크들)
-        const volumesToLoad: any[] = [{
-          url: URL.createObjectURL(ctFile),
-          name: ctFile.name
-        }];
+        // 로드할 볼륨 목록 구성
+        const volumesToLoad: any[] = [];
 
-        // 마스크 파일들도 함께 로드 (다중 레이블 마스크 지원)
+        // maskOnly가 아닐 때만 CT 볼륨 추가
+        if (!maskOnly) {
+          volumesToLoad.push({
+            url: URL.createObjectURL(ctFile),
+            name: ctFile.name
+          });
+        }
+
+        // 마스크 파일들 로드 (다중 레이블 마스크 지원)
         // 'actc' colormap은 세그멘테이션 레이블용 컬러맵
         if (maskFiles && maskFiles.length > 0) {
           maskFiles.forEach((maskFile) => {
@@ -180,15 +186,22 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
               url: URL.createObjectURL(maskFile),
               name: maskFile.name,
               colormap: 'actc', // Anatomical CT colormap - 다중 레이블용
-              opacity: opacity / 100,
+              opacity: maskOnly ? 1 : opacity / 100, // maskOnly일 때는 완전 불투명
             });
             console.log(`${title}: 다중 레이블 마스크 추가 - ${maskFile.name}`);
           });
         }
 
+        // 로드할 볼륨이 없으면 스킵 (maskOnly인데 마스크가 없는 경우)
+        if (volumesToLoad.length === 0) {
+          console.log(`${title}: 로드할 볼륨 없음`);
+          setIsLoading(false);
+          return;
+        }
+
         // Niivue로 볼륨 + 마스크 함께 로드
         await nvRef.current!.loadVolumes(volumesToLoad);
-        console.log(`${title}: 볼륨 로드 완료, 마스크 ${maskFiles?.length || 0}개 포함`);
+        console.log(`${title}: 볼륨 로드 완료, 마스크 ${maskFiles?.length || 0}개 포함, maskOnly: ${maskOnly}`);
 
         // 슬라이스 범위 업데이트
         const volumes = nvRef.current!.volumes;
@@ -208,7 +221,7 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
           setVolumeLoaded(true); // 볼륨 로드 완료!
         }
 
-        console.log(`${title}: CT 파일 로드 완료 (마스크 ${maskFiles?.length || 0}개 포함)`);
+        console.log(`${title}: 로드 완료 (마스크 ${maskFiles?.length || 0}개 포함, maskOnly: ${maskOnly})`);
       } catch (error) {
         console.error(`${title}: CT 파일 로드 실패:`, error);
         setVolumeLoaded(false);
@@ -218,7 +231,7 @@ export default function SingleCtView({ id, title, orientation }: SingleCtViewPro
     };
 
     loadCTFile();
-  }, [ctFile, maskFiles, title, orientation, opacity]);
+  }, [ctFile, maskFiles, title, orientation, opacity, maskOnly]);
 
   // Segmentation mask 로드 (레거시: liverMask/spleenMask가 별도로 설정될 때)
   useEffect(() => {

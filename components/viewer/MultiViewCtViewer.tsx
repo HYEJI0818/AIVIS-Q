@@ -21,11 +21,12 @@ export default function MultiViewCtViewer() {
           orientation="sagittal"
         />
 
-        {/* 3D View */}
+        {/* 3D View - mask만 표시 */}
         <SingleCtView
           id="3d"
           title="3D View"
           orientation="3d"
+          maskOnly={true}
         />
 
         {/* Coronal */}

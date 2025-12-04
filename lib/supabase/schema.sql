@@ -184,3 +184,4 @@ COMMENT ON TABLE volume_analysis IS '간/비장 볼륨 분석 결과';
 COMMENT ON TABLE pediatric_references IS '소아 참고치 백분위수 데이터';
 COMMENT ON TABLE users IS '시스템 사용자 (의사, 기사, 관리자)';
 
+

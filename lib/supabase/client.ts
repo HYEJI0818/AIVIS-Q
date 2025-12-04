@@ -10,3 +10,4 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // 클라이언트용 Supabase 인스턴스
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+

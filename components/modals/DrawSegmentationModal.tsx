@@ -63,7 +63,8 @@ export default function DrawSegmentationModal() {
         const nv = new Niivue({
           backColor: [0, 0, 0, 1],
           dragAndDropEnabled: false,
-          show3Dcrosshair: true,
+          show3Dcrosshair: false,
+          crosshairWidth: 0, // 십자선 숨김
           isColorbar: false,
         });
 

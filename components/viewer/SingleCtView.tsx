@@ -97,7 +97,8 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
       const nv = new Niivue({
         dragAndDropEnabled: false,
         backColor: [0.02, 0.06, 0.09, 1], // #020617 in RGBA
-        show3Dcrosshair: true,
+        show3Dcrosshair: false,
+        crosshairWidth: 0, // 십자선 숨김
         isColorbar: false,
         textHeight: 0.03,
       });

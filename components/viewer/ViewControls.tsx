@@ -131,11 +131,11 @@ export default function ViewControls() {
           </div>
           <div className="flex gap-4">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#22C55E]" />
+              <div className="w-3 h-3 rounded-full bg-[#EF4444]" />
               <span className="text-xs text-slate-300">간 (Liver)</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-[#EF4444]" />
+              <div className="w-3 h-3 rounded-full bg-[#22C55E]" />
               <span className="text-xs text-slate-300">비장 (Spleen)</span>
             </div>
           </div>

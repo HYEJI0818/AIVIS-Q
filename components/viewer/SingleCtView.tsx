@@ -19,6 +19,9 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
   const [maxSlice, setMaxSlice] = useState(100);
   const [isLoading, setIsLoading] = useState(false);
   const [volumeLoaded, setVolumeLoaded] = useState(false); // 볼륨 로드 완료 상태
+  
+  // 마스크 볼륨의 원본 cal_min/cal_max 저장 (밝기/대비 계산 기준)
+  const maskOriginalCalRef = useRef<Map<number, { calMin: number; calMax: number }>>(new Map());
 
   const {
     ctFile,
@@ -186,7 +189,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
               url: URL.createObjectURL(maskFile),
               name: maskFile.name,
               colormap: 'actc', // Anatomical CT colormap - 다중 레이블용
-              opacity: maskOnly ? 1 : opacity / 100, // maskOnly일 때는 완전 불투명
+              opacity: maskOnly ? 1 : 0.4, // 초기값 40%, 이후 컨트롤러에서 조절
             });
             console.log(`${title}: 다중 레이블 마스크 추가 - ${maskFile.name}`);
           });
@@ -218,6 +221,16 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
             setCurrentSlice(Math.floor(volume.dims[0] / 2));
           }
           
+          // 마스크 볼륨의 원본 cal_min/cal_max 저장
+          maskOriginalCalRef.current.clear();
+          const maskStartIndex = maskOnly ? 0 : 1;
+          for (let i = maskStartIndex; i < volumes.length; i++) {
+            maskOriginalCalRef.current.set(i, {
+              calMin: volumes[i].cal_min,
+              calMax: volumes[i].cal_max
+            });
+          }
+          
           setVolumeLoaded(true); // 볼륨 로드 완료!
         }
 
@@ -231,7 +244,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
     };
 
     loadCTFile();
-  }, [ctFile, maskFiles, title, orientation, opacity, maskOnly]);
+  }, [ctFile, maskFiles, title, orientation, maskOnly]);
 
   // Segmentation mask 로드 (레거시: liverMask/spleenMask가 별도로 설정될 때)
   useEffect(() => {
@@ -249,7 +262,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
             url: URL.createObjectURL(liverMask),
             name: 'liver_mask.nii.gz',
             colorMap: 'red',  // 간 → 빨간색
-            opacity: opacity / 100,
+            opacity: 0.4, // 초기값 40%, 이후 컨트롤러에서 조절
           });
         }
 
@@ -258,7 +271,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
             url: URL.createObjectURL(spleenMask),
             name: 'spleen_mask.nii.gz',
             colorMap: 'green',  // 비장 → 초록색
-            opacity: opacity / 100,
+            opacity: 0.4, // 초기값 40%, 이후 컨트롤러에서 조절
           });
         }
 
@@ -275,42 +288,55 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
     };
 
     loadLegacyMasks();
-  }, [liverMask, spleenMask, maskFiles, title, opacity, ctFile, volumeLoaded]);
+  }, [liverMask, spleenMask, maskFiles, title, ctFile, volumeLoaded]);
 
-  // Brightness/Contrast/Opacity 반영
+  // Mask 밝기/대비/투명도 반영 (마스크에만 적용, CT 볼륨은 변경 안함)
   useEffect(() => {
-    if (!nvRef.current || !ctFile || nvRef.current.volumes.length === 0) return;
+    if (!nvRef.current || !ctFile || !volumeLoaded) return;
+    if (nvRef.current.volumes.length === 0) return;
 
     try {
       const nv = nvRef.current;
-      const baseVolume = nv.volumes[0];
+      
+      // maskOnly면 index 0부터, 아니면 index 1부터 마스크
+      const maskStartIndex = maskOnly ? 0 : 1;
+      
+      // 마스크 볼륨이 없으면 스킵
+      if (maskStartIndex >= nv.volumes.length) return;
 
-      // Brightness & Contrast 적용
-      // Niivue의 cal_min, cal_max를 조정하여 윈도우 레벨 변경
-      const range = baseVolume.cal_max - baseVolume.cal_min;
-      const center = (baseVolume.cal_max + baseVolume.cal_min) / 2;
-      
-      // Brightness: 중심값 이동 (-50 ~ +50)
-      const brightnessOffset = ((brightness - 50) / 50) * range * 0.5;
-      
-      // Contrast: 범위 조정 (0.5 ~ 2.0)
-      const contrastFactor = 0.5 + (contrast / 100) * 1.5;
-      const newRange = range / contrastFactor;
-      
-      baseVolume.cal_min = center + brightnessOffset - newRange / 2;
-      baseVolume.cal_max = center + brightnessOffset + newRange / 2;
-
-      // Mask opacity 적용
-      for (let i = 1; i < nv.volumes.length; i++) {
-        nv.volumes[i].opacity = opacity / 100;
+      // 마스크 볼륨에만 밝기/대비/투명도 적용
+      for (let i = maskStartIndex; i < nv.volumes.length; i++) {
+        const maskVolume = nv.volumes[i];
+        
+        // Opacity 적용 (마스크에만)
+        maskVolume.opacity = opacity / 100;
+        
+        // 원본 cal 값 가져오기 (저장된 값이 없으면 스킵)
+        const originalCal = maskOriginalCalRef.current.get(i);
+        if (originalCal) {
+          const { calMin, calMax } = originalCal;
+          const range = calMax - calMin;
+          const center = (calMax + calMin) / 2;
+          
+          // Brightness: 중심값 이동 (-50 ~ +50)
+          const brightnessOffset = ((brightness - 50) / 50) * range * 0.5;
+          
+          // Contrast: 범위 조정 (0.5 ~ 2.0)
+          const contrastFactor = 0.5 + (contrast / 100) * 1.5;
+          const newRange = range / contrastFactor;
+          
+          maskVolume.cal_min = center + brightnessOffset - newRange / 2;
+          maskVolume.cal_max = center + brightnessOffset + newRange / 2;
+        }
       }
 
       nv.updateGLVolume();
+      console.log(`${title}: 마스크 컨트롤 적용 - opacity: ${opacity}%, brightness: ${brightness}, contrast: ${contrast}`);
       
     } catch (error) {
-      console.error(`${title}: 뷰 컨트롤 적용 실패:`, error);
+      console.error(`${title}: 마스크 컨트롤 적용 실패:`, error);
     }
-  }, [brightness, contrast, opacity, title, ctFile]);
+  }, [brightness, contrast, opacity, title, ctFile, maskOnly, volumeLoaded]);
 
   // Slice 변경 핸들러
   const handleSliceChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -21,7 +21,7 @@ const MASK_DRAW_COLORMAP = {
 };
 
 export default function DrawSegmentationModal() {
-  const { isDrawingModalOpen, closeDrawingModal, ctFile, maskFiles } = useCtSessionStore();
+  const { isDrawingModalOpen, closeDrawingModal, ctFile, maskFiles, editedMaskData, setEditedMaskData } = useCtSessionStore();
   
   // ============================================
   // 상태
@@ -177,16 +177,27 @@ export default function DrawSegmentationModal() {
         nv.setDrawColormap(MASK_DRAW_COLORMAP);
 
         // 마스크를 drawing 레이어로 로드
+        // 1. 먼저 원본 마스크 로드
+        // 2. editedMaskData가 있으면 drawBitmap에 적용
+        if (maskUrlRef.current) {
+          URL.revokeObjectURL(maskUrlRef.current);
+        }
+        
         if (maskFiles && maskFiles.length > 0) {
-          if (maskUrlRef.current) {
-            URL.revokeObjectURL(maskUrlRef.current);
-          }
           maskUrlRef.current = URL.createObjectURL(maskFiles[0]);
           
           try {
             await nv.loadDrawingFromUrl(maskUrlRef.current);
+            console.log('원본 마스크 로드 완료');
+            
+            // 수정된 데이터가 있으면 drawBitmap에 적용
+            if (editedMaskData && nv.drawBitmap) {
+              nv.drawBitmap.set(editedMaskData);
+              nv.refreshDrawing();
+              console.log('수정된 마스크 데이터 적용 완료');
+            }
+            
             setIsMaskLoaded(true);
-            console.log('마스크 로드 완료');
             
             if (nv.volumes.length > 0 && nv.volumes[0].dims) {
               volumeDimsRef.current = nv.volumes[0].dims;
@@ -234,7 +245,7 @@ export default function DrawSegmentationModal() {
     };
 
     loadFiles();
-  }, [ctFile, maskFiles, isDrawingModalOpen, isNiivueReady, drawOpacity, viewTab]);
+  }, [ctFile, maskFiles, editedMaskData, isDrawingModalOpen, isNiivueReady, drawOpacity, viewTab]);
 
   // ============================================
   // 투명도 변경
@@ -514,9 +525,33 @@ export default function DrawSegmentationModal() {
   };
 
   // ============================================
-  // NIfTI 저장
+  // 상태 저장 (Store에 drawBitmap 복사해서 저장)
   // ============================================
-  const handleSaveMask = async () => {
+  const handleSaveToStore = () => {
+    if (!nvRef.current || !nvRef.current.drawBitmap) {
+      alert('저장할 마스크가 없습니다.');
+      return;
+    }
+    
+    try {
+      const nv = nvRef.current;
+      
+      // drawBitmap을 복사해서 저장 (Niivue 방식)
+      const copiedData = new Uint8Array(nv.drawBitmap);
+      setEditedMaskData(copiedData);
+      
+      console.log('수정된 마스크가 Store에 저장되었습니다. 크기:', copiedData.length);
+      alert('수정된 마스크가 저장되었습니다!');
+    } catch (error) {
+      console.error('마스크 저장 실패:', error);
+      alert('마스크 저장에 실패했습니다.');
+    }
+  };
+
+  // ============================================
+  // NIfTI 파일 다운로드 (기존 기능 유지)
+  // ============================================
+  const handleDownloadMask = async () => {
     if (!nvRef.current) return;
     
     try {
@@ -528,11 +563,10 @@ export default function DrawSegmentationModal() {
         isSaveDrawing: true 
       });
       
-      alert('수정된 마스크가 저장되었습니다!');
-      closeDrawingModal();
+      console.log('마스크 파일 다운로드 완료');
     } catch (error) {
-      console.error('마스크 저장 실패:', error);
-      alert('마스크 저장에 실패했습니다.');
+      console.error('마스크 다운로드 실패:', error);
+      alert('마스크 다운로드에 실패했습니다.');
     }
   };
 
@@ -650,6 +684,22 @@ export default function DrawSegmentationModal() {
           </div>
 
           <div className="flex-1" />
+
+          {/* 저장 버튼 */}
+          <button
+            onClick={handleSaveToStore}
+            disabled={!isMaskLoaded}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition flex items-center gap-2 ${
+              isMaskLoaded
+                ? 'bg-[#22C55E] hover:bg-[#16A34A] text-white'
+                : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            저장
+          </button>
 
           {/* 닫기 버튼 */}
           <button

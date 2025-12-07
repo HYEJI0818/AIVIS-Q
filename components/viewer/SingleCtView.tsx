@@ -28,6 +28,8 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
     liverMask,
     spleenMask,
     maskFiles,
+    editedMaskData,
+    maskViewMode,
     brightness,
     contrast,
     opacity,
@@ -183,12 +185,21 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
         nv.setDrawColormap(initialColormap);
         nv.setDrawOpacity(0.4); // 기본 opacity 40%
 
-        // 마스크를 Drawing 레이어로 로드 (DrawSegmentationModal과 동일한 방식)
+        // 마스크를 Drawing 레이어로 로드
+        // 1. 먼저 원본 마스크 로드
+        // 2. maskViewMode가 'edited'이고 editedMaskData가 있으면 drawBitmap에 적용
         if (maskFiles && maskFiles.length > 0) {
           const maskUrl = URL.createObjectURL(maskFiles[0]);
           try {
             await nv.loadDrawingFromUrl(maskUrl);
-            console.log(`${title}: 마스크 Drawing 레이어 로드 완료`);
+            console.log(`${title}: 원본 마스크 로드 완료`);
+            
+            // 수정 모드이고 수정된 데이터가 있으면 drawBitmap에 적용
+            if (maskViewMode === 'edited' && editedMaskData && nv.drawBitmap) {
+              nv.drawBitmap.set(editedMaskData);
+              nv.refreshDrawing();
+              console.log(`${title}: 수정된 마스크 데이터 적용 완료`);
+            }
           } catch (error) {
             console.error(`${title}: 마스크 Drawing 로드 실패:`, error);
           }
@@ -223,7 +234,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
           setVolumeLoaded(true); // 볼륨 로드 완료!
         }
 
-        console.log(`${title}: 로드 완료 (마스크 ${maskFiles?.length || 0}개 포함, maskOnly: ${maskOnly})`);
+        console.log(`${title}: 로드 완료 (마스크 ${maskFiles?.length || 0}개 포함, maskOnly: ${maskOnly}, viewMode: ${maskViewMode})`);
       } catch (error) {
         console.error(`${title}: CT 파일 로드 실패:`, error);
         setVolumeLoaded(false);
@@ -234,7 +245,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
 
     loadCTFile();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctFile, maskFiles, title, orientation, maskOnly]);
+  }, [ctFile, maskFiles, editedMaskData, maskViewMode, title, orientation, maskOnly]);
 
   // Segmentation mask 로드 (레거시: liverMask/spleenMask가 별도로 설정될 때)
   useEffect(() => {

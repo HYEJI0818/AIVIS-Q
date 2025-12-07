@@ -15,6 +15,12 @@ interface CtSessionState {
   // 일반 마스크 파일 (파일명에 'mask'가 포함된 파일들)
   maskFiles: File[];
   
+  // 수정된 마스크 데이터 (드로우 모달에서 저장한 drawBitmap)
+  editedMaskData: Uint8Array | null;
+  
+  // 마스크 뷰 모드 (메인 뷰어에서 원본/수정본 전환)
+  maskViewMode: 'original' | 'edited';
+  
   // 추론 진행률
   progress: CtProgress;
   
@@ -38,6 +44,8 @@ interface CtSessionState {
   setMaskFiles: (files: File[]) => void;
   addMaskFile: (file: File) => void;
   clearMaskFiles: () => void;
+  setEditedMaskData: (data: Uint8Array | null) => void;
+  setMaskViewMode: (mode: 'original' | 'edited') => void;
   setProgress: (progress: Partial<CtProgress>) => void;
   setViewControls: (params: Partial<{ brightness: number; contrast: number; opacity: number }>) => void;
   
@@ -68,6 +76,8 @@ export const useCtSessionStore = create<CtSessionState>((set) => ({
   liverMask: null,
   spleenMask: null,
   maskFiles: [],
+  editedMaskData: null,
+  maskViewMode: 'original',
   progress: initialProgress,
   brightness: 50,
   contrast: 50,
@@ -96,6 +106,10 @@ export const useCtSessionStore = create<CtSessionState>((set) => ({
   })),
   
   clearMaskFiles: () => set({ maskFiles: [] }),
+  
+  setEditedMaskData: (data) => set({ editedMaskData: data }),
+  
+  setMaskViewMode: (mode) => set({ maskViewMode: mode }),
   
   setProgress: (newProgress) =>
     set((state) => ({
@@ -127,6 +141,8 @@ export const useCtSessionStore = create<CtSessionState>((set) => ({
       liverMask: null,
       spleenMask: null,
       maskFiles: [],
+      editedMaskData: null,
+      maskViewMode: 'original',
       progress: initialProgress,
       brightness: 50,
       contrast: 50,

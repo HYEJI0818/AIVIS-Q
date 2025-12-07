@@ -48,6 +48,7 @@ export default function DrawSegmentationModal() {
   const ctUrlRef = useRef<string | null>(null);
   const volumeDimsRef = useRef<number[]>([0, 0, 0, 0]);
   const currentVoxelRef = useRef<number[]>([0, 0, 0]);
+  const prevVoxelRef = useRef<number[] | null>(null); // 이전 voxel 위치 (보간용)
 
   // ============================================
   // Niivue 초기화
@@ -244,34 +245,24 @@ export default function DrawSegmentationModal() {
   }, [drawOpacity, isNiivueReady]);
 
   // ============================================
-  // 현재 슬라이스에만 그리기/지우기 함수
+  // 특정 위치에 브러시 적용 (내부 함수)
   // ============================================
-  const drawOnCurrentSlice = useCallback(() => {
-    if (!nvRef.current || !nvRef.current.drawBitmap) return;
-    
-    const nv = nvRef.current;
-    const drawBitmap = nv.drawBitmap;
-    if (!drawBitmap) return;
-    
-    const dims = volumeDimsRef.current;
-    
-    if (!dims || dims.length < 4) return;
-    
-    const voxel = currentVoxelRef.current;
-    if (!voxel) return;
-    
+  const applyBrushAt = useCallback((
+    drawBitmap: Uint8Array,
+    voxel: number[],
+    dims: number[],
+    brushRadius: number,
+    penValue: number
+  ) => {
     const dimX = dims[1];
     const dimY = dims[2];
     const dimZ = dims[3];
-    
-    const brushRadius = maskBrushSize;
-    const penValue = maskTool === 'erase' ? 0 : selectedLabel;
     
     // 뷰에 따라 현재 슬라이스에만 적용
     if (viewTab === 'axial') {
       const centerX = voxel[0];
       const centerY = voxel[1];
-      const currentZ = voxel[2]; // 현재 슬라이스만
+      const currentZ = voxel[2];
       
       for (let dx = -brushRadius; dx <= brushRadius; dx++) {
         for (let dy = -brushRadius; dy <= brushRadius; dy++) {
@@ -292,7 +283,7 @@ export default function DrawSegmentationModal() {
     } else if (viewTab === 'coronal') {
       const centerX = voxel[0];
       const centerZ = voxel[2];
-      const currentY = voxel[1]; // 현재 슬라이스만
+      const currentY = voxel[1];
       
       for (let dx = -brushRadius; dx <= brushRadius; dx++) {
         for (let dz = -brushRadius; dz <= brushRadius; dz++) {
@@ -313,7 +304,7 @@ export default function DrawSegmentationModal() {
     } else if (viewTab === 'sagittal') {
       const centerY = voxel[1];
       const centerZ = voxel[2];
-      const currentX = voxel[0]; // 현재 슬라이스만
+      const currentX = voxel[0];
       
       for (let dy = -brushRadius; dy <= brushRadius; dy++) {
         for (let dz = -brushRadius; dz <= brushRadius; dz++) {
@@ -332,9 +323,70 @@ export default function DrawSegmentationModal() {
         }
       }
     }
+  }, [viewTab]);
+
+  // ============================================
+  // 현재 슬라이스에만 그리기/지우기 함수 (보간 지원)
+  // ============================================
+  const drawOnCurrentSlice = useCallback((isFirstStroke: boolean = false) => {
+    if (!nvRef.current || !nvRef.current.drawBitmap) return;
     
+    const nv = nvRef.current;
+    const drawBitmap = nv.drawBitmap;
+    if (!drawBitmap) return;
+    
+    const dims = volumeDimsRef.current;
+    if (!dims || dims.length < 4) return;
+    
+    const currentVoxel = [...currentVoxelRef.current];
+    if (!currentVoxel) return;
+    
+    const brushRadius = maskBrushSize;
+    const penValue = maskTool === 'erase' ? 0 : selectedLabel;
+    
+    // 첫 스트로크이거나 이전 위치가 없으면 현재 위치에만 적용
+    if (isFirstStroke || !prevVoxelRef.current) {
+      applyBrushAt(drawBitmap, currentVoxel, dims, brushRadius, penValue);
+      prevVoxelRef.current = currentVoxel;
+      nv.refreshDrawing();
+      return;
+    }
+    
+    const prevVoxel = prevVoxelRef.current;
+    
+    // 뷰에 따라 보간할 축 결정
+    let axis1: number, axis2: number;
+    if (viewTab === 'axial') {
+      axis1 = 0; axis2 = 1; // x, y
+    } else if (viewTab === 'coronal') {
+      axis1 = 0; axis2 = 2; // x, z
+    } else {
+      axis1 = 1; axis2 = 2; // y, z
+    }
+    
+    // 두 점 사이의 거리 계산
+    const dx = currentVoxel[axis1] - prevVoxel[axis1];
+    const dy = currentVoxel[axis2] - prevVoxel[axis2];
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // 보간 스텝 수 (최소 1)
+    const steps = Math.max(1, Math.ceil(distance));
+    
+    // 선형 보간하여 모든 중간 점에 브러시 적용
+    for (let i = 0; i <= steps; i++) {
+      const t = steps === 0 ? 1 : i / steps;
+      const interpVoxel = [
+        Math.round(prevVoxel[0] + (currentVoxel[0] - prevVoxel[0]) * t),
+        Math.round(prevVoxel[1] + (currentVoxel[1] - prevVoxel[1]) * t),
+        Math.round(prevVoxel[2] + (currentVoxel[2] - prevVoxel[2]) * t)
+      ];
+      
+      applyBrushAt(drawBitmap, interpVoxel, dims, brushRadius, penValue);
+    }
+    
+    prevVoxelRef.current = currentVoxel;
     nv.refreshDrawing();
-  }, [viewTab, maskTool, selectedLabel, maskBrushSize]);
+  }, [viewTab, maskTool, selectedLabel, maskBrushSize, applyBrushAt]);
 
   // ============================================
   // 마우스 이벤트 (Niivue 캔버스에 직접 연결)
@@ -348,22 +400,25 @@ export default function DrawSegmentationModal() {
     const handleMouseDown = (e: MouseEvent) => {
       if (e.button !== 0) return;
       isDrawingLocal = true;
+      prevVoxelRef.current = null; // 새 스트로크 시작 시 이전 위치 초기화
       setTimeout(() => {
-        if (isDrawingLocal) drawOnCurrentSlice();
+        if (isDrawingLocal) drawOnCurrentSlice(true); // 첫 스트로크 표시
       }, 10);
     };
     
     const handleMouseMove = () => {
       if (!isDrawingLocal) return;
-      drawOnCurrentSlice();
+      drawOnCurrentSlice(false); // 연속 스트로크
     };
     
     const handleMouseUp = () => {
       isDrawingLocal = false;
+      prevVoxelRef.current = null; // 스트로크 종료 시 이전 위치 초기화
     };
     
     const handleMouseLeave = () => {
       isDrawingLocal = false;
+      prevVoxelRef.current = null; // 캔버스 이탈 시 이전 위치 초기화
     };
     
     canvas.addEventListener('mousedown', handleMouseDown);

@@ -177,22 +177,13 @@ export default function VolumeMetricsCard() {
       </div>
 
       {/* 추가 액션 버튼 */}
-      <div className="mt-4 pt-4 border-t border-white/5 flex gap-2">
-        <button
-          onClick={() => {
-            const { openDrawingModal } = useCtSessionStore.getState();
-            openDrawingModal();
-          }}
-          className="flex-1 px-3 py-2 bg-[#0066CC]/10 hover:bg-[#0066CC]/20 text-[#0066CC] text-xs font-medium rounded-lg transition"
-        >
-          수정하기
-        </button>
+      <div className="mt-4 pt-4 border-t border-white/5">
         <button
           onClick={() => {
             const { openComparisonModal } = useCtSessionStore.getState();
             openComparisonModal();
           }}
-          className="flex-1 px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-medium rounded-lg transition"
+          className="w-full px-3 py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs font-medium rounded-lg transition"
         >
           비교하기
         </button>

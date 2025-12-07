@@ -184,12 +184,6 @@ export default function DownloadPanel() {
     }
   };
 
-  // PDF 다운로드 (TODO: 실제 구현 필요)
-  const handleDownloadPDF = () => {
-    console.log('PDF 다운로드 요청');
-    alert('PDF 다운로드 기능은 준비 중입니다.');
-  };
-
   return (
     <div className="rounded-2xl bg-[#0B1220] border border-white/5 shadow-sm p-5">
       <h3 className="text-sm font-semibold text-slate-300 mb-4">결과 다운로드</h3>
@@ -248,15 +242,6 @@ export default function DownloadPanel() {
           </svg>
         </button>
 
-        <button
-          onClick={handleDownloadPDF}
-          className="w-full px-4 py-2.5 bg-[#0066CC]/10 hover:bg-[#0066CC]/20 border border-[#0066CC]/20 text-[#0066CC] text-sm font-semibold rounded-lg transition flex items-center justify-between"
-        >
-          <span>PDF 리포트</span>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-          </svg>
-        </button>
       </div>
 
       <p className="mt-4 text-xs text-slate-500 text-center">

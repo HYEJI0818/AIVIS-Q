@@ -29,6 +29,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
     spleenMask,
     maskFiles,
     editedMaskData,
+    editedSliceInfo,
     maskViewMode,
     brightness,
     contrast,
@@ -186,20 +187,12 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
         nv.setDrawOpacity(0.4); // 기본 opacity 40%
 
         // 마스크를 Drawing 레이어로 로드
-        // 1. 먼저 원본 마스크 로드
-        // 2. maskViewMode가 'edited'이고 editedMaskData가 있으면 drawBitmap에 적용
+        // 원본 마스크만 로드 (수정된 데이터는 별도 useEffect에서 적용)
         if (maskFiles && maskFiles.length > 0) {
           const maskUrl = URL.createObjectURL(maskFiles[0]);
           try {
             await nv.loadDrawingFromUrl(maskUrl);
             console.log(`${title}: 원본 마스크 로드 완료`);
-            
-            // 수정 모드이고 수정된 데이터가 있으면 drawBitmap에 적용
-            if (maskViewMode === 'edited' && editedMaskData && nv.drawBitmap) {
-              nv.drawBitmap.set(editedMaskData);
-              nv.refreshDrawing();
-              console.log(`${title}: 수정된 마스크 데이터 적용 완료`);
-            }
           } catch (error) {
             console.error(`${title}: 마스크 Drawing 로드 실패:`, error);
           }
@@ -245,7 +238,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
 
     loadCTFile();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ctFile, maskFiles, editedMaskData, maskViewMode, title, orientation, maskOnly]);
+  }, [ctFile, maskFiles, title, orientation, maskOnly]);
 
   // Segmentation mask 로드 (레거시: liverMask/spleenMask가 별도로 설정될 때)
   useEffect(() => {
@@ -302,6 +295,63 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
       console.error(`${title}: 마스크 컨트롤 적용 실패:`, error);
     }
   }, [brightness, contrast, opacity, title, ctFile, volumeLoaded]);
+
+  // maskViewMode 또는 editedMaskData 변경 시 마스크 업데이트
+  useEffect(() => {
+    if (!nvRef.current || !ctFile || !volumeLoaded) return;
+    if (!nvRef.current.drawBitmap) return;
+
+    const nv = nvRef.current;
+
+    // 'edited' 모드: 수정된 데이터 적용
+    if (maskViewMode === 'edited' && editedMaskData) {
+      try {
+        nv.drawBitmap.set(editedMaskData);
+        nv.refreshDrawing();
+        
+        // 수정한 슬라이스로 이동 (모든 뷰어에서)
+        if (editedSliceInfo) {
+          const scene = nv.scene;
+          let targetSlice = 0;
+          
+          if (orientation === 'axial') {
+            targetSlice = editedSliceInfo.axialSlice;
+            scene.crosshairPos[2] = targetSlice / maxSlice;
+          } else if (orientation === 'coronal') {
+            targetSlice = editedSliceInfo.coronalSlice;
+            scene.crosshairPos[1] = targetSlice / maxSlice;
+          } else if (orientation === 'sagittal') {
+            targetSlice = editedSliceInfo.sagittalSlice;
+            scene.crosshairPos[0] = targetSlice / maxSlice;
+          }
+          
+          setCurrentSlice(targetSlice);
+          console.log(`${title}: 수정한 슬라이스 ${targetSlice}로 이동`);
+        }
+        
+        nv.updateGLVolume();
+        console.log(`${title}: 수정된 마스크 적용 완료`);
+      } catch (error) {
+        console.error(`${title}: 수정된 마스크 적용 실패:`, error);
+      }
+    }
+    // 'original' 모드: 원본 마스크 다시 로드
+    else if (maskViewMode === 'original' && maskFiles && maskFiles.length > 0) {
+      const loadOriginalMask = async () => {
+        try {
+          const maskUrl = URL.createObjectURL(maskFiles[0]);
+          await nv.loadDrawingFromUrl(maskUrl);
+          nv.refreshDrawing();
+          nv.updateGLVolume();
+          URL.revokeObjectURL(maskUrl);
+          console.log(`${title}: 원본 마스크 로드 완료`);
+        } catch (error) {
+          console.error(`${title}: 원본 마스크 로드 실패:`, error);
+        }
+      };
+      loadOriginalMask();
+    }
+  }, [editedMaskData, maskViewMode, maskFiles, title, ctFile, volumeLoaded, editedSliceInfo, orientation, maxSlice]);
 
   // Slice 변경 핸들러
   const handleSliceChange = (e: React.ChangeEvent<HTMLInputElement>) => {

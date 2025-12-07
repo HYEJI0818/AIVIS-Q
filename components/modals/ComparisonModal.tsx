@@ -23,6 +23,7 @@ interface ComparisonViewerProps {
   editedMaskData?: Uint8Array | null;
   useEditedMask: boolean;
   orientation: ViewOrientation;
+  initialSlice?: number; // 초기 슬라이스 (수정된 슬라이스로 이동)
 }
 
 // 단일 비교 뷰어 컴포넌트
@@ -34,7 +35,8 @@ function ComparisonViewer({
   maskFiles, 
   editedMaskData, 
   useEditedMask,
-  orientation
+  orientation,
+  initialSlice
 }: ComparisonViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const nvRef = useRef<Niivue | null>(null);
@@ -42,6 +44,17 @@ function ComparisonViewer({
   const [currentSlice, setCurrentSlice] = useState(0);
   const [maxSlice, setMaxSlice] = useState(100);
   const [volumeLoaded, setVolumeLoaded] = useState(false);
+  const orientationRef = useRef(orientation);
+  const maxSliceRef = useRef(maxSlice);
+
+  // refs 업데이트
+  useEffect(() => {
+    orientationRef.current = orientation;
+  }, [orientation]);
+
+  useEffect(() => {
+    maxSliceRef.current = maxSlice;
+  }, [maxSlice]);
 
   // Niivue 초기화 (ctFile이 있을 때만)
   useEffect(() => {
@@ -68,6 +81,56 @@ function ComparisonViewer({
       nvRef.current = null;
     };
   }, [id, ctFile]);
+
+  // 마우스 휠 이벤트 처리 (슬라이스 변경)
+  useEffect(() => {
+    if (!canvasRef.current) return;
+
+    const canvas = canvasRef.current;
+
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!nvRef.current || !nvRef.current.volumes.length) return;
+
+      const nv = nvRef.current;
+      const delta = e.deltaY > 0 ? 1 : -1;
+      const currentOrientation = orientationRef.current;
+      const currentMaxSlice = maxSliceRef.current;
+
+      // 현재 슬라이스 위치 가져오기
+      let currentPos = 0;
+      if (currentOrientation === 'axial') {
+        currentPos = Math.round(nv.scene.crosshairPos[2] * currentMaxSlice);
+      } else if (currentOrientation === 'coronal') {
+        currentPos = Math.round(nv.scene.crosshairPos[1] * currentMaxSlice);
+      } else if (currentOrientation === 'sagittal') {
+        currentPos = Math.round(nv.scene.crosshairPos[0] * currentMaxSlice);
+      }
+
+      // 새 슬라이스 계산
+      const newSlice = Math.max(0, Math.min(currentMaxSlice, currentPos + delta));
+
+      // 슬라이스 설정
+      if (currentOrientation === 'axial') {
+        nv.scene.crosshairPos[2] = newSlice / currentMaxSlice;
+      } else if (currentOrientation === 'coronal') {
+        nv.scene.crosshairPos[1] = newSlice / currentMaxSlice;
+      } else if (currentOrientation === 'sagittal') {
+        nv.scene.crosshairPos[0] = newSlice / currentMaxSlice;
+      }
+
+      nv.updateGLVolume();
+      setCurrentSlice(newSlice);
+    };
+
+    canvas.addEventListener('wheel', handleWheel, { passive: false });
+
+    return () => {
+      canvas.removeEventListener('wheel', handleWheel);
+    };
+  }, []);
 
   // Orientation 변경 처리
   useEffect(() => {
@@ -97,10 +160,25 @@ function ComparisonViewer({
           newMaxSlice = dims[1] - 1;
         }
         setMaxSlice(newMaxSlice);
-        setCurrentSlice(Math.floor(newMaxSlice / 2));
+        
+        // initialSlice가 있으면 해당 슬라이스로 이동, 없으면 중앙
+        const targetSlice = initialSlice !== undefined 
+          ? Math.min(initialSlice, newMaxSlice) 
+          : Math.floor(newMaxSlice / 2);
+        setCurrentSlice(targetSlice);
+        
+        // 슬라이스 위치 설정
+        if (orientation === 'axial') {
+          nv.scene.crosshairPos[2] = targetSlice / newMaxSlice;
+        } else if (orientation === 'coronal') {
+          nv.scene.crosshairPos[1] = targetSlice / newMaxSlice;
+        } else if (orientation === 'sagittal') {
+          nv.scene.crosshairPos[0] = targetSlice / newMaxSlice;
+        }
+        nv.updateGLVolume();
       }
     }
-  }, [orientation, volumeLoaded]);
+  }, [orientation, volumeLoaded, initialSlice]);
 
   // CT 파일 및 마스크 로드
   useEffect(() => {
@@ -175,7 +253,22 @@ function ComparisonViewer({
               newMaxSlice = dims[1] - 1;
             }
             setMaxSlice(newMaxSlice);
-            setCurrentSlice(Math.floor(newMaxSlice / 2));
+            
+            // initialSlice가 있으면 해당 슬라이스로 이동, 없으면 중앙
+            const targetSlice = initialSlice !== undefined 
+              ? Math.min(initialSlice, newMaxSlice) 
+              : Math.floor(newMaxSlice / 2);
+            setCurrentSlice(targetSlice);
+            
+            // 슬라이스 위치 설정
+            if (orientation === 'axial') {
+              nv.scene.crosshairPos[2] = targetSlice / newMaxSlice;
+            } else if (orientation === 'coronal') {
+              nv.scene.crosshairPos[1] = targetSlice / newMaxSlice;
+            } else if (orientation === 'sagittal') {
+              nv.scene.crosshairPos[0] = targetSlice / newMaxSlice;
+            }
+            nv.updateGLVolume();
           }
           setVolumeLoaded(true);
         }
@@ -189,7 +282,7 @@ function ComparisonViewer({
     };
 
     loadFiles();
-  }, [ctFile, maskFiles, editedMaskData, useEditedMask, id, orientation]);
+  }, [ctFile, maskFiles, editedMaskData, useEditedMask, id, orientation, initialSlice]);
 
   // 슬라이스 변경
   const handleSliceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -281,8 +374,23 @@ export default function ComparisonModal() {
     ctFile, 
     maskFiles, 
     editedMaskData,
+    editedSliceInfo,
     volumeMetrics 
   } = useCtSessionStore();
+
+  // 현재 orientation에 맞는 수정된 슬라이스 인덱스 가져오기
+  const getInitialSlice = (dir: ViewOrientation) => {
+    if (!editedSliceInfo) {
+      console.log('getInitialSlice: editedSliceInfo is null');
+      return undefined;
+    }
+    let slice: number | undefined;
+    if (dir === 'axial') slice = editedSliceInfo.axialSlice;
+    else if (dir === 'coronal') slice = editedSliceInfo.coronalSlice;
+    else if (dir === 'sagittal') slice = editedSliceInfo.sagittalSlice;
+    console.log('getInitialSlice:', { dir, slice, editedSliceInfo });
+    return slice;
+  };
 
   // 뷰 방향 상태
   const [orientation, setOrientation] = useState<ViewOrientation>('axial');
@@ -345,6 +453,7 @@ export default function ComparisonModal() {
             editedMaskData={null}
             useEditedMask={false}
             orientation={orientation}
+            initialSlice={getInitialSlice(orientation)}
           />
 
           {/* 중앙: 구분선 */}
@@ -358,6 +467,7 @@ export default function ComparisonModal() {
             ctFile={ctFile}
             maskFiles={maskFiles}
             editedMaskData={editedMaskData}
+            initialSlice={getInitialSlice(orientation)}
             useEditedMask={true}
             orientation={orientation}
           />

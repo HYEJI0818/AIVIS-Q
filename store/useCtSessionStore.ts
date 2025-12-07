@@ -18,6 +18,13 @@ interface CtSessionState {
   // 수정된 마스크 데이터 (드로우 모달에서 저장한 drawBitmap)
   editedMaskData: Uint8Array | null;
   
+  // 수정된 슬라이스 정보 (3D 좌표로 저장하여 모든 뷰어에서 사용)
+  editedSliceInfo: {
+    axialSlice: number;    // Z 좌표
+    coronalSlice: number;  // Y 좌표
+    sagittalSlice: number; // X 좌표
+  } | null;
+  
   // 마스크 뷰 모드 (메인 뷰어에서 원본/수정본 전환)
   maskViewMode: 'original' | 'edited';
   
@@ -45,6 +52,7 @@ interface CtSessionState {
   addMaskFile: (file: File) => void;
   clearMaskFiles: () => void;
   setEditedMaskData: (data: Uint8Array | null) => void;
+  setEditedSliceInfo: (info: { axialSlice: number; coronalSlice: number; sagittalSlice: number } | null) => void;
   setMaskViewMode: (mode: 'original' | 'edited') => void;
   setProgress: (progress: Partial<CtProgress>) => void;
   setViewControls: (params: Partial<{ brightness: number; contrast: number; opacity: number }>) => void;
@@ -77,6 +85,7 @@ export const useCtSessionStore = create<CtSessionState>((set) => ({
   spleenMask: null,
   maskFiles: [],
   editedMaskData: null,
+  editedSliceInfo: null,
   maskViewMode: 'original',
   progress: initialProgress,
   brightness: 50,
@@ -108,6 +117,8 @@ export const useCtSessionStore = create<CtSessionState>((set) => ({
   clearMaskFiles: () => set({ maskFiles: [] }),
   
   setEditedMaskData: (data) => set({ editedMaskData: data }),
+  
+  setEditedSliceInfo: (info) => set({ editedSliceInfo: info }),
   
   setMaskViewMode: (mode) => set({ maskViewMode: mode }),
   
@@ -142,6 +153,7 @@ export const useCtSessionStore = create<CtSessionState>((set) => ({
       spleenMask: null,
       maskFiles: [],
       editedMaskData: null,
+      editedSliceInfo: null,
       maskViewMode: 'original',
       progress: initialProgress,
       brightness: 50,

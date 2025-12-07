@@ -21,7 +21,7 @@ const MASK_DRAW_COLORMAP = {
 };
 
 export default function DrawSegmentationModal() {
-  const { isDrawingModalOpen, closeDrawingModal, ctFile, maskFiles, editedMaskData, setEditedMaskData } = useCtSessionStore();
+  const { isDrawingModalOpen, closeDrawingModal, ctFile, maskFiles, editedMaskData, setEditedMaskData, setEditedSliceInfo } = useCtSessionStore();
   
   // ============================================
   // 상태
@@ -245,7 +245,8 @@ export default function DrawSegmentationModal() {
     };
 
     loadFiles();
-  }, [ctFile, maskFiles, editedMaskData, isDrawingModalOpen, isNiivueReady, drawOpacity, viewTab]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ctFile, maskFiles, isDrawingModalOpen, isNiivueReady]);
 
   // ============================================
   // 투명도 변경
@@ -540,7 +541,21 @@ export default function DrawSegmentationModal() {
       const copiedData = new Uint8Array(nv.drawBitmap);
       setEditedMaskData(copiedData);
       
-      console.log('수정된 마스크가 Store에 저장되었습니다. 크기:', copiedData.length);
+      // 마지막으로 수정한 voxel의 3D 좌표를 사용하여 모든 뷰의 슬라이스 계산
+      // currentVoxelRef: [x(sagittal), y(coronal), z(axial)]
+      const lastVoxel = currentVoxelRef.current;
+      const sagittalSlice = lastVoxel[0]; // X 좌표
+      const coronalSlice = lastVoxel[1];  // Y 좌표
+      const axialSlice = lastVoxel[2];    // Z 좌표
+      
+      setEditedSliceInfo({
+        axialSlice,
+        coronalSlice,
+        sagittalSlice
+      });
+      
+      console.log('수정된 마스크가 Store에 저장되었습니다. 크기:', copiedData.length, 
+        'voxel:', lastVoxel, 'axial:', axialSlice, 'coronal:', coronalSlice, 'sagittal:', sagittalSlice);
       alert('수정된 마스크가 저장되었습니다!');
     } catch (error) {
       console.error('마스크 저장 실패:', error);

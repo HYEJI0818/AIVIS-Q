@@ -14,11 +14,13 @@ interface SingleCtViewProps {
 
 export default function SingleCtView({ id, title, orientation, maskOnly = false }: SingleCtViewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const nvRef = useRef<Niivue | null>(null);
   const [currentSlice, setCurrentSlice] = useState(0);
   const [maxSlice, setMaxSlice] = useState(100);
   const [isLoading, setIsLoading] = useState(false);
   const [volumeLoaded, setVolumeLoaded] = useState(false); // 볼륨 로드 완료 상태
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const {
     ctFile,
@@ -312,26 +314,73 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
     }
   };
 
-  // 확대 버튼 핸들러
-  const handleFullscreen = () => {
-    console.log(`${title} 확대 요청`);
-    // TODO: 모달로 크게 보기 기능 구현
+  // 전체화면 상태 변경 감지
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      const isCurrentlyFullscreen = document.fullscreenElement === containerRef.current;
+      setIsFullscreen(isCurrentlyFullscreen);
+      
+      // 전체화면 진입/해제 시 Niivue 리사이즈
+      if (nvRef.current) {
+        setTimeout(() => {
+          nvRef.current?.resizeListener();
+          nvRef.current?.updateGLVolume();
+        }, 100);
+      }
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  // 확대/축소 버튼 핸들러
+  const handleFullscreen = async () => {
+    if (!containerRef.current) return;
+
+    try {
+      if (!isFullscreen) {
+        // 전체화면 진입
+        await containerRef.current.requestFullscreen();
+        console.log(`${title}: 전체화면 진입`);
+      } else {
+        // 전체화면 해제
+        await document.exitFullscreen();
+        console.log(`${title}: 전체화면 해제`);
+      }
+    } catch (error) {
+      console.error('전체화면 전환 실패:', error);
+    }
   };
 
   return (
-    <div className="flex flex-col bg-[#020617] rounded-lg border border-white/5 p-3 min-h-0 overflow-hidden">
-      {/* 상단: 제목 + 확대 버튼 */}
+    <div 
+      ref={containerRef}
+      className={`flex flex-col bg-[#020617] rounded-lg border border-white/5 p-3 min-h-0 overflow-hidden ${
+        isFullscreen ? 'fixed inset-0 z-50 rounded-none border-none p-6' : ''
+      }`}
+    >
+      {/* 상단: 제목 + 전체화면 버튼 */}
       <div className="flex justify-between items-center mb-2">
-        <h3 className="text-sm font-medium text-slate-300">{title}</h3>
+        <h3 className={`font-medium text-slate-300 ${isFullscreen ? 'text-lg' : 'text-sm'}`}>{title}</h3>
         {ctFile && (
           <button
             onClick={handleFullscreen}
-            className="p-1.5 hover:bg-white/5 rounded transition"
-            title="확대"
+            className={`hover:bg-white/10 rounded transition ${isFullscreen ? 'p-2' : 'p-1.5'}`}
+            title={isFullscreen ? '축소' : '전체화면'}
           >
-            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-            </svg>
+            {isFullscreen ? (
+              // 축소 아이콘
+              <svg className="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25" />
+              </svg>
+            ) : (
+              // 확대 아이콘
+              <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+              </svg>
+            )}
           </button>
         )}
       </div>

@@ -10,8 +10,6 @@ import { useCtSessionStore } from '@/store/useCtSessionStore';
 const MASK_LABELS = [
   { id: 1, name: '간 (Liver)', color: '#FF4444', shortName: '간' },
   { id: 2, name: '비장 (Spleen)', color: '#44FF44', shortName: '비장' },
-  { id: 3, name: '좌신장 (L.Kidney)', color: '#4444FF', shortName: '좌신장' },
-  { id: 4, name: '우신장 (R.Kidney)', color: '#FFFF44', shortName: '우신장' },
 ];
 
 // Niivue용 커스텀 Drawing 컬러맵
@@ -245,9 +243,9 @@ export default function DrawSegmentationModal() {
   }, [drawOpacity, isNiivueReady]);
 
   // ============================================
-  // 3D 관통 그리기/지우기 함수
+  // 현재 슬라이스에만 그리기/지우기 함수
   // ============================================
-  const draw3DPenetrate = useCallback(() => {
+  const drawOnCurrentSlice = useCallback(() => {
     if (!nvRef.current || !nvRef.current.drawBitmap) return;
     
     const nv = nvRef.current;
@@ -268,10 +266,11 @@ export default function DrawSegmentationModal() {
     const brushRadius = maskBrushSize;
     const penValue = maskTool === 'erase' ? 0 : selectedLabel;
     
-    // 뷰에 따라 3D 관통 적용
+    // 뷰에 따라 현재 슬라이스에만 적용
     if (viewTab === 'axial') {
       const centerX = voxel[0];
       const centerY = voxel[1];
+      const currentZ = voxel[2]; // 현재 슬라이스만
       
       for (let dx = -brushRadius; dx <= brushRadius; dx++) {
         for (let dy = -brushRadius; dy <= brushRadius; dy++) {
@@ -281,18 +280,18 @@ export default function DrawSegmentationModal() {
           const vy = centerY + dy;
           
           if (vx < 0 || vx >= dimX || vy < 0 || vy >= dimY) continue;
+          if (currentZ < 0 || currentZ >= dimZ) continue;
           
-          for (let z = 0; z < dimZ; z++) {
-            const idx = vx + vy * dimX + z * dimX * dimY;
-            if (idx >= 0 && idx < drawBitmap.length) {
-              drawBitmap[idx] = penValue;
-            }
+          const idx = vx + vy * dimX + currentZ * dimX * dimY;
+          if (idx >= 0 && idx < drawBitmap.length) {
+            drawBitmap[idx] = penValue;
           }
         }
       }
     } else if (viewTab === 'coronal') {
       const centerX = voxel[0];
       const centerZ = voxel[2];
+      const currentY = voxel[1]; // 현재 슬라이스만
       
       for (let dx = -brushRadius; dx <= brushRadius; dx++) {
         for (let dz = -brushRadius; dz <= brushRadius; dz++) {
@@ -302,18 +301,18 @@ export default function DrawSegmentationModal() {
           const vz = centerZ + dz;
           
           if (vx < 0 || vx >= dimX || vz < 0 || vz >= dimZ) continue;
+          if (currentY < 0 || currentY >= dimY) continue;
           
-          for (let y = 0; y < dimY; y++) {
-            const idx = vx + y * dimX + vz * dimX * dimY;
-            if (idx >= 0 && idx < drawBitmap.length) {
-              drawBitmap[idx] = penValue;
-            }
+          const idx = vx + currentY * dimX + vz * dimX * dimY;
+          if (idx >= 0 && idx < drawBitmap.length) {
+            drawBitmap[idx] = penValue;
           }
         }
       }
     } else if (viewTab === 'sagittal') {
       const centerY = voxel[1];
       const centerZ = voxel[2];
+      const currentX = voxel[0]; // 현재 슬라이스만
       
       for (let dy = -brushRadius; dy <= brushRadius; dy++) {
         for (let dz = -brushRadius; dz <= brushRadius; dz++) {
@@ -323,12 +322,11 @@ export default function DrawSegmentationModal() {
           const vz = centerZ + dz;
           
           if (vy < 0 || vy >= dimY || vz < 0 || vz >= dimZ) continue;
+          if (currentX < 0 || currentX >= dimX) continue;
           
-          for (let x = 0; x < dimX; x++) {
-            const idx = x + vy * dimX + vz * dimX * dimY;
-            if (idx >= 0 && idx < drawBitmap.length) {
-              drawBitmap[idx] = penValue;
-            }
+          const idx = currentX + vy * dimX + vz * dimX * dimY;
+          if (idx >= 0 && idx < drawBitmap.length) {
+            drawBitmap[idx] = penValue;
           }
         }
       }
@@ -350,13 +348,13 @@ export default function DrawSegmentationModal() {
       if (e.button !== 0) return;
       isDrawingLocal = true;
       setTimeout(() => {
-        if (isDrawingLocal) draw3DPenetrate();
+        if (isDrawingLocal) drawOnCurrentSlice();
       }, 10);
     };
     
     const handleMouseMove = () => {
       if (!isDrawingLocal) return;
-      draw3DPenetrate();
+      drawOnCurrentSlice();
     };
     
     const handleMouseUp = () => {
@@ -378,7 +376,7 @@ export default function DrawSegmentationModal() {
       canvas.removeEventListener('mouseup', handleMouseUp);
       canvas.removeEventListener('mouseleave', handleMouseLeave);
     };
-  }, [isDrawingModalOpen, draw3DPenetrate]);
+  }, [isDrawingModalOpen, drawOnCurrentSlice]);
 
   // ============================================
   // 슬라이스 변경
@@ -463,28 +461,6 @@ export default function DrawSegmentationModal() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
       <div className="w-[90vw] max-w-[1400px] h-[85vh] bg-[#0B1220] rounded-2xl border border-white/10 shadow-2xl flex flex-col">
-        {/* 헤더 */}
-        <div className="flex justify-between items-center px-6 py-4 border-b border-white/5">
-          <div className="flex items-center gap-4">
-            <h2 className="text-xl font-semibold text-slate-100">🎯 3D 관통 편집</h2>
-            
-            {isMaskLoaded && (
-              <span className="px-3 py-1 bg-green-500/20 text-green-400 text-xs rounded-full font-medium">
-                마스크 로드됨
-              </span>
-            )}
-          </div>
-          
-          <button
-            onClick={closeDrawingModal}
-            className="p-2 hover:bg-white/5 rounded-lg transition"
-          >
-            <svg className="w-6 h-6 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-
         {/* 상단 컨트롤 바 */}
         <div className="px-6 py-3 border-b border-white/5 flex items-center gap-4 flex-wrap">
           {/* 뷰어 탭 */}
@@ -515,13 +491,8 @@ export default function DrawSegmentationModal() {
                   key={label.id}
                   onClick={() => {
                     setSelectedLabel(label.id);
-                    setMaskTool('draw');
                   }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
-                    selectedLabel === label.id && maskTool !== 'erase'
-                      ? 'ring-2 ring-white ring-offset-1 ring-offset-[#0B1220]'
-                      : 'hover:opacity-80'
-                  }`}
+                  className="px-2.5 py-1 rounded-lg text-xs font-medium transition hover:opacity-80"
                   style={{ 
                     backgroundColor: label.color + '40',
                     color: label.color,
@@ -541,19 +512,18 @@ export default function DrawSegmentationModal() {
             <button
               onClick={() => setMaskTool('draw')}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                maskTool === 'draw' ? 'text-white' : 'bg-[#020617] text-slate-400 hover:bg-[#1F2937] border border-white/10'
+                maskTool === 'draw' ? 'bg-[#0066CC] text-white' : 'bg-[#020617] text-slate-400 hover:bg-[#1F2937] border border-white/10'
               }`}
-              style={maskTool === 'draw' ? { backgroundColor: MASK_LABELS.find(l => l.id === selectedLabel)?.color } : {}}
             >
-              ✏️ 그리기
+              그리기
             </button>
             <button
               onClick={() => setMaskTool('erase')}
               className={`px-3 py-1.5 rounded-lg text-sm font-medium transition ${
-                maskTool === 'erase' ? 'bg-red-500 text-white' : 'bg-[#020617] text-slate-400 hover:bg-[#1F2937] border border-white/10'
+                maskTool === 'erase' ? 'bg-[#0066CC] text-white' : 'bg-[#020617] text-slate-400 hover:bg-[#1F2937] border border-white/10'
               }`}
             >
-              🗑️ 지우기
+              지우기
             </button>
             <button 
               onClick={handleUndo} 
@@ -597,20 +567,14 @@ export default function DrawSegmentationModal() {
 
           <div className="flex-1" />
 
-          {/* 액션 버튼 */}
-          {maskFiles && maskFiles.length > 0 && (
-            <button 
-              onClick={handleResetMask} 
-              className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition"
-            >
-              원본 복구
-            </button>
-          )}
-          <button 
-            onClick={handleSaveMask} 
-            className="px-5 py-1.5 bg-gradient-to-r from-blue-500 to-cyan-500 text-white font-semibold rounded-lg transition hover:opacity-90"
+          {/* 닫기 버튼 */}
+          <button
+            onClick={closeDrawingModal}
+            className="p-2 hover:bg-white/5 rounded-lg transition"
           >
-            💾 저장 (.nii)
+            <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
 
@@ -635,42 +599,22 @@ export default function DrawSegmentationModal() {
               </div>
             )}
 
-            {/* 현재 모드 표시 */}
-            <div className="absolute top-4 left-4 bg-black/70 px-3 py-2 rounded-lg pointer-events-none">
-              <p className="text-xs text-cyan-400">
-                {maskTool === 'erase' 
-                  ? '🗑️ 3D 관통 지우기' 
-                  : `✏️ 3D 관통 그리기 (${MASK_LABELS.find(l => l.id === selectedLabel)?.shortName})`}
-              </p>
-            </div>
-
-            {/* 안내 메시지 */}
-            <div className="absolute bottom-4 right-4 bg-black/70 px-3 py-2 rounded-lg pointer-events-none">
-              <p className="text-xs text-green-400">🔥 모든 슬라이스에 적용됩니다!</p>
-            </div>
           </div>
 
           {/* 슬라이스 슬라이더 */}
-          <div className="grid grid-cols-2 gap-6">
-            <div>
-              <div className="flex justify-between items-center mb-2">
-                <label className="text-sm font-medium text-slate-300">슬라이스</label>
-                <span className="text-sm text-[#0066CC] font-semibold">{sliceIndex} / {maxSlice}</span>
-              </div>
-              <input
-                type="range"
-                min="0"
-                max={maxSlice}
-                value={sliceIndex}
-                onChange={handleSliceChange}
-                className="w-full h-2 bg-[#1F2937] rounded-full appearance-none cursor-pointer"
-              />
+          <div>
+            <div className="flex justify-between items-center mb-2">
+              <label className="text-sm font-medium text-slate-300">슬라이스</label>
+              <span className="text-sm text-[#0066CC] font-semibold">{sliceIndex} / {maxSlice}</span>
             </div>
-            <div className="bg-slate-800/50 rounded-lg p-3 flex items-center">
-              <p className="text-xs text-slate-400">
-                💡 팁: 마우스로 클릭하거나 드래그하면 모든 슬라이스에 동시에 적용됩니다.
-              </p>
-            </div>
+            <input
+              type="range"
+              min="0"
+              max={maxSlice}
+              value={sliceIndex}
+              onChange={handleSliceChange}
+              className="w-full h-2 bg-[#1F2937] rounded-full appearance-none cursor-pointer"
+            />
           </div>
         </div>
       </div>

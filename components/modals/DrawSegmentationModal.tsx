@@ -37,7 +37,7 @@ export default function DrawSegmentationModal() {
   const [selectedLabel, setSelectedLabel] = useState(1);
   const [drawOpacity, setDrawOpacity] = useState(80);
   const [isMaskLoaded, setIsMaskLoaded] = useState(false);
-  const [maskBrushSize, setMaskBrushSize] = useState(5);
+  const [maskBrushSize, setMaskBrushSize] = useState(2);
   
   // ============================================
   // Refs
@@ -252,7 +252,9 @@ export default function DrawSegmentationModal() {
     voxel: number[],
     dims: number[],
     brushRadius: number,
-    penValue: number
+    penValue: number,
+    isErasing: boolean,
+    targetLabel: number // 지우기 모드에서 이 레이블만 지움
   ) => {
     const dimX = dims[1];
     const dimY = dims[2];
@@ -276,7 +278,14 @@ export default function DrawSegmentationModal() {
           
           const idx = vx + vy * dimX + currentZ * dimX * dimY;
           if (idx >= 0 && idx < drawBitmap.length) {
-            drawBitmap[idx] = penValue;
+            // 지우기 모드: 선택된 레이블만 지움
+            if (isErasing) {
+              if (drawBitmap[idx] === targetLabel) {
+                drawBitmap[idx] = 0;
+              }
+            } else {
+              drawBitmap[idx] = penValue;
+            }
           }
         }
       }
@@ -297,7 +306,14 @@ export default function DrawSegmentationModal() {
           
           const idx = vx + currentY * dimX + vz * dimX * dimY;
           if (idx >= 0 && idx < drawBitmap.length) {
-            drawBitmap[idx] = penValue;
+            // 지우기 모드: 선택된 레이블만 지움
+            if (isErasing) {
+              if (drawBitmap[idx] === targetLabel) {
+                drawBitmap[idx] = 0;
+              }
+            } else {
+              drawBitmap[idx] = penValue;
+            }
           }
         }
       }
@@ -318,7 +334,14 @@ export default function DrawSegmentationModal() {
           
           const idx = currentX + vy * dimX + vz * dimX * dimY;
           if (idx >= 0 && idx < drawBitmap.length) {
-            drawBitmap[idx] = penValue;
+            // 지우기 모드: 선택된 레이블만 지움
+            if (isErasing) {
+              if (drawBitmap[idx] === targetLabel) {
+                drawBitmap[idx] = 0;
+              }
+            } else {
+              drawBitmap[idx] = penValue;
+            }
           }
         }
       }
@@ -342,11 +365,12 @@ export default function DrawSegmentationModal() {
     if (!currentVoxel) return;
     
     const brushRadius = maskBrushSize;
-    const penValue = maskTool === 'erase' ? 0 : selectedLabel;
+    const isErasing = maskTool === 'erase';
+    const penValue = isErasing ? 0 : selectedLabel;
     
     // 첫 스트로크이거나 이전 위치가 없으면 현재 위치에만 적용
     if (isFirstStroke || !prevVoxelRef.current) {
-      applyBrushAt(drawBitmap, currentVoxel, dims, brushRadius, penValue);
+      applyBrushAt(drawBitmap, currentVoxel, dims, brushRadius, penValue, isErasing, selectedLabel);
       prevVoxelRef.current = currentVoxel;
       nv.refreshDrawing();
       return;
@@ -381,7 +405,7 @@ export default function DrawSegmentationModal() {
         Math.round(prevVoxel[2] + (currentVoxel[2] - prevVoxel[2]) * t)
       ];
       
-      applyBrushAt(drawBitmap, interpVoxel, dims, brushRadius, penValue);
+      applyBrushAt(drawBitmap, interpVoxel, dims, brushRadius, penValue, isErasing, selectedLabel);
     }
     
     prevVoxelRef.current = currentVoxel;
@@ -548,11 +572,15 @@ export default function DrawSegmentationModal() {
                   onClick={() => {
                     setSelectedLabel(label.id);
                   }}
-                  className="px-2.5 py-1 rounded-lg text-xs font-medium transition hover:opacity-80"
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold transition ${
+                    selectedLabel === label.id 
+                      ? 'ring-2 ring-white ring-offset-1 ring-offset-[#0B1220] scale-105' 
+                      : 'opacity-50 hover:opacity-80'
+                  }`}
                   style={{ 
-                    backgroundColor: label.color + '40',
+                    backgroundColor: label.color + (selectedLabel === label.id ? '80' : '30'),
                     color: label.color,
-                    borderLeft: `3px solid ${label.color}`
+                    border: `2px solid ${label.color}`
                   }}
                 >
                   {label.shortName}
@@ -596,8 +624,8 @@ export default function DrawSegmentationModal() {
             <span className="text-xs text-slate-400">브러시:</span>
             <input
               type="range"
-              min="1"
-              max="20"
+              min="0"
+              max="15"
               value={maskBrushSize}
               onChange={(e) => setMaskBrushSize(parseInt(e.target.value))}
               className="w-20 h-1.5 rounded-full appearance-none cursor-pointer bg-slate-700"

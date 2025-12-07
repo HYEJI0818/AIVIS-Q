@@ -60,7 +60,7 @@ export default function DownloadPanel() {
       // 압축된 파일인지 확인하고 압축 해제
       if (nifti.isCompressed(originalArrayBuffer)) {
         console.log('압축된 NIfTI 파일 감지, 압축 해제 중...');
-        originalArrayBuffer = nifti.decompress(originalArrayBuffer);
+        originalArrayBuffer = nifti.decompress(originalArrayBuffer) as ArrayBuffer;
       }
       
       // NIfTI 파일인지 확인

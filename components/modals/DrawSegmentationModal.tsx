@@ -538,7 +538,7 @@ export default function DrawSegmentationModal() {
       const nv = nvRef.current;
       
       // drawBitmap을 복사해서 저장 (Niivue 방식)
-      const copiedData = new Uint8Array(nv.drawBitmap);
+      const copiedData = new Uint8Array(nv.drawBitmap!);
       setEditedMaskData(copiedData);
       
       // 마지막으로 수정한 voxel의 3D 좌표를 사용하여 모든 뷰의 슬라이스 계산

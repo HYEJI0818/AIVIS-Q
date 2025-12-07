@@ -306,7 +306,7 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
     // 'edited' 모드: 수정된 데이터 적용
     if (maskViewMode === 'edited' && editedMaskData) {
       try {
-        nv.drawBitmap.set(editedMaskData);
+        nv.drawBitmap!.set(editedMaskData);
         nv.refreshDrawing();
         
         // 수정한 슬라이스로 이동 (모든 뷰어에서)

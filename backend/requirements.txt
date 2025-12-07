@@ -1,0 +1,16 @@
+# FastAPI 백엔드 의존성
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-multipart==0.0.6
+numpy>=1.24.0
+nibabel>=5.0.0
+scikit-image>=0.21.0
+scipy>=1.10.0
+pandas>=2.0.0
+
+# CORS 지원
+pydantic>=2.0.0
+
+# 라디오믹스 (선택적 - 전체 기능 사용 시)
+# pyradiomics>=3.0.0
+

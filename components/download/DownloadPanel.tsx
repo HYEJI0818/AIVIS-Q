@@ -1,11 +1,16 @@
 'use client';
 
+import { useState } from 'react';
 import * as nifti from 'nifti-reader-js';
 import { useCtSessionStore } from '@/store/useCtSessionStore';
+import { downloadCSV, downloadCSVFromAPI } from '@/lib/utils/csvGenerator';
+import { CSVExportData } from '@/lib/ctTypes';
 
 export default function DownloadPanel() {
-  const { ctFile, maskFiles, editedMaskData } = useCtSessionStore();
+  const { ctFile, maskFiles, editedMaskData, patientInfo, volumeMetrics } = useCtSessionStore();
   const hasEditedMask = !!editedMaskData;
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
 
   // 파일 다운로드 헬퍼 함수
   const downloadBlob = (blob: Blob, filename: string) => {
@@ -98,10 +103,85 @@ export default function DownloadPanel() {
     }
   };
 
-  // CSV 다운로드 (TODO: 실제 구현 필요)
-  const handleDownloadCSV = () => {
-    console.log('CSV 다운로드 요청');
-    alert('CSV 다운로드 기능은 준비 중입니다.');
+  // 토스트 표시 헬퍼
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 3000);
+  };
+
+  // 간/비장 CSV 다운로드
+  const handleDownloadCSV = async () => {
+    // 분석 결과가 없는 경우
+    if (!volumeMetrics) {
+      showToast('다운로드할 분석 결과가 없습니다.', 'error');
+      return;
+    }
+
+    // 환자 정보가 없는 경우 기본값 사용
+    const patientId = patientInfo?.name || 'UNKNOWN';
+    const studyId = patientInfo?.studyDate || undefined;
+
+    // 현재 표시 중인 데이터 기준으로 CSV 데이터 구성
+    // maskViewMode에 따라 추정값 또는 수정값 사용
+    const { maskViewMode } = useCtSessionStore.getState();
+    const useEdited = maskViewMode === 'edited' && hasEditedMask;
+
+    const liverVolume = useEdited 
+      ? volumeMetrics.liverVolumeEdited 
+      : volumeMetrics.liverVolumeEstimated;
+    const spleenVolume = useEdited 
+      ? volumeMetrics.spleenVolumeEdited 
+      : volumeMetrics.spleenVolumeEstimated;
+
+    // CSV 데이터 생성
+    const csvData: CSVExportData = {
+      patient_id: patientId,
+      study_id: studyId,
+      liver_volume_ml: liverVolume,
+      // HU 통계 및 라디오믹스 (현재는 미계산 - 추후 확장 가능)
+      // 실제 값이 있으면 여기에 추가
+      liver_mean_hu: null,
+      liver_std_hu: null,
+      liver_min_hu: null,
+      liver_max_hu: null,
+      liver_p10_hu: null,
+      liver_p90_hu: null,
+      liver_glcm_contrast: null,
+      liver_glcm_homogeneity: null,
+      liver_glrlm_lre: null,
+      liver_glszm_ze: null,
+      spleen_volume_ml: spleenVolume,
+      spleen_mean_hu: null,
+      spleen_std_hu: null,
+      spleen_min_hu: null,
+      spleen_max_hu: null,
+      spleen_p10_hu: null,
+      spleen_p90_hu: null,
+      spleen_glcm_contrast: null,
+      spleen_glcm_homogeneity: null,
+      spleen_glrlm_lre: null,
+      spleen_glszm_ze: null,
+    };
+
+    setIsDownloading(true);
+
+    try {
+      // 먼저 백엔드 API 시도, 실패 시 클라이언트에서 직접 생성
+      await downloadCSVFromAPI(csvData);
+      showToast('CSV 파일 다운로드 완료!', 'success');
+    } catch (error) {
+      console.error('CSV 다운로드 실패:', error);
+      // Fallback: 클라이언트에서 직접 생성
+      try {
+        downloadCSV(csvData);
+        showToast('CSV 파일 다운로드 완료!', 'success');
+      } catch (fallbackError) {
+        console.error('CSV 다운로드 fallback 실패:', fallbackError);
+        showToast('CSV 다운로드에 실패했습니다.', 'error');
+      }
+    } finally {
+      setIsDownloading(false);
+    }
   };
 
   // PDF 다운로드 (TODO: 실제 구현 필요)
@@ -147,10 +227,23 @@ export default function DownloadPanel() {
 
         <button
           onClick={handleDownloadCSV}
-          className="w-full px-4 py-2.5 bg-[#020617] hover:bg-[#1F2937] border border-white/10 text-slate-200 text-sm font-medium rounded-lg transition flex items-center justify-between group"
+          disabled={isDownloading || !volumeMetrics}
+          className={`w-full px-4 py-2.5 border text-sm font-medium rounded-lg transition flex items-center justify-between group ${
+            isDownloading || !volumeMetrics
+              ? 'bg-[#020617]/50 border-white/5 text-slate-500 cursor-not-allowed'
+              : 'bg-[#0066CC]/10 hover:bg-[#0066CC]/20 border-[#0066CC]/20 text-[#0066CC]'
+          }`}
         >
-          <span>분석 결과 CSV</span>
-          <svg className="w-4 h-4 text-slate-400 group-hover:text-[#0066CC] transition" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <span className="flex items-center gap-2">
+            {isDownloading && (
+              <svg className="animate-spin w-4 h-4" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+            )}
+            간/비장 CSV 다운로드
+          </span>
+          <svg className={`w-4 h-4 transition ${isDownloading || !volumeMetrics ? 'text-slate-500' : 'text-[#0066CC]'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
           </svg>
         </button>
@@ -169,6 +262,28 @@ export default function DownloadPanel() {
       <p className="mt-4 text-xs text-slate-500 text-center">
         다운로드한 파일은 로컬에 저장됩니다
       </p>
+
+      {/* 토스트 알림 */}
+      {toast && (
+        <div
+          className={`fixed bottom-6 right-6 px-4 py-3 rounded-lg shadow-lg z-50 flex items-center gap-2 animate-in slide-in-from-bottom-2 ${
+            toast.type === 'success'
+              ? 'bg-green-600 text-white'
+              : 'bg-red-600 text-white'
+          }`}
+        >
+          {toast.type === 'success' ? (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+          ) : (
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          )}
+          <span className="text-sm font-medium">{toast.message}</span>
+        </div>
+      )}
     </div>
   );
 }

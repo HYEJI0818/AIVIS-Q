@@ -168,8 +168,9 @@ export default function DrawSegmentationModal() {
           name: ctFile.name
         }]);
 
-        // Drawing 활성화
-        nv.setDrawingEnabled(true);
+        // Drawing 비활성화 (커스텀 drawOnCurrentSlice 함수로 직접 그리기 위해)
+        // Niivue 내장 드로잉을 활성화하면 빨간 선이 동시에 그어지는 문제 발생
+        nv.setDrawingEnabled(false);
         nv.setDrawOpacity(drawOpacity / 100);
         // @ts-expect-error - Niivue setDrawColormap accepts object but typed as string
         nv.setDrawColormap(MASK_DRAW_COLORMAP);

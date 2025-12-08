@@ -18,11 +18,11 @@ interface CtSessionState {
   // 수정된 마스크 데이터 (드로우 모달에서 저장한 drawBitmap)
   editedMaskData: Uint8Array | null;
   
-  // 수정된 슬라이스 정보 (3D 좌표로 저장하여 모든 뷰어에서 사용)
+  // 수정된 슬라이스 정보 (각 뷰별로 마지막 수정 슬라이스)
   editedSliceInfo: {
-    axialSlice: number;    // Z 좌표
-    coronalSlice: number;  // Y 좌표
-    sagittalSlice: number; // X 좌표
+    axialSlice: number;    // Axial 뷰에서 마지막 수정 슬라이스
+    coronalSlice: number;  // Coronal 뷰에서 마지막 수정 슬라이스
+    sagittalSlice: number; // Sagittal 뷰에서 마지막 수정 슬라이스
   } | null;
   
   // 마스크 뷰 모드 (메인 뷰어에서 원본/수정본 전환)

@@ -46,6 +46,7 @@ function ComparisonViewer({
   const [volumeLoaded, setVolumeLoaded] = useState(false);
   const orientationRef = useRef(orientation);
   const maxSliceRef = useRef(maxSlice);
+  const initialSliceRef = useRef(initialSlice);
 
   // refs 업데이트
   useEffect(() => {
@@ -55,6 +56,10 @@ function ComparisonViewer({
   useEffect(() => {
     maxSliceRef.current = maxSlice;
   }, [maxSlice]);
+
+  useEffect(() => {
+    initialSliceRef.current = initialSlice;
+  }, [initialSlice]);
 
   // Niivue 초기화 (ctFile이 있을 때만)
   useEffect(() => {
@@ -162,23 +167,27 @@ function ComparisonViewer({
         setMaxSlice(newMaxSlice);
         
         // initialSlice가 있으면 해당 슬라이스로 이동, 없으면 중앙
-        const targetSlice = initialSlice !== undefined 
+        // initialSlice가 유효한 범위 내에 있는지 확인
+        const targetSlice = (initialSlice !== undefined && initialSlice >= 0)
           ? Math.min(initialSlice, newMaxSlice) 
           : Math.floor(newMaxSlice / 2);
         setCurrentSlice(targetSlice);
         
-        // 슬라이스 위치 설정
+        // 슬라이스 위치 설정 (0으로 나누기 방지)
+        const sliceRatio = newMaxSlice > 0 ? targetSlice / newMaxSlice : 0.5;
         if (orientation === 'axial') {
-          nv.scene.crosshairPos[2] = targetSlice / newMaxSlice;
+          nv.scene.crosshairPos[2] = sliceRatio;
         } else if (orientation === 'coronal') {
-          nv.scene.crosshairPos[1] = targetSlice / newMaxSlice;
+          nv.scene.crosshairPos[1] = sliceRatio;
         } else if (orientation === 'sagittal') {
-          nv.scene.crosshairPos[0] = targetSlice / newMaxSlice;
+          nv.scene.crosshairPos[0] = sliceRatio;
         }
         nv.updateGLVolume();
+        
+        console.log(`ComparisonViewer ${id}: Orientation 변경 - ${orientation}, target: ${targetSlice}, initial: ${initialSlice}`);
       }
     }
-  }, [orientation, volumeLoaded, initialSlice]);
+  }, [orientation, volumeLoaded, initialSlice, id]);
 
   // CT 파일 및 마스크 로드
   useEffect(() => {
@@ -255,20 +264,24 @@ function ComparisonViewer({
             setMaxSlice(newMaxSlice);
             
             // initialSlice가 있으면 해당 슬라이스로 이동, 없으면 중앙
-            const targetSlice = initialSlice !== undefined 
+            // initialSlice가 유효한 범위 내에 있는지 확인
+            const targetSlice = (initialSlice !== undefined && initialSlice >= 0)
               ? Math.min(initialSlice, newMaxSlice) 
               : Math.floor(newMaxSlice / 2);
             setCurrentSlice(targetSlice);
             
-            // 슬라이스 위치 설정
+            // 슬라이스 위치 설정 (0으로 나누기 방지)
+            const sliceRatio = newMaxSlice > 0 ? targetSlice / newMaxSlice : 0.5;
             if (orientation === 'axial') {
-              nv.scene.crosshairPos[2] = targetSlice / newMaxSlice;
+              nv.scene.crosshairPos[2] = sliceRatio;
             } else if (orientation === 'coronal') {
-              nv.scene.crosshairPos[1] = targetSlice / newMaxSlice;
+              nv.scene.crosshairPos[1] = sliceRatio;
             } else if (orientation === 'sagittal') {
-              nv.scene.crosshairPos[0] = targetSlice / newMaxSlice;
+              nv.scene.crosshairPos[0] = sliceRatio;
             }
             nv.updateGLVolume();
+            
+            console.log(`ComparisonViewer ${id}: 슬라이스 설정 - target: ${targetSlice}, max: ${newMaxSlice}, initial: ${initialSlice}`);
           }
           setVolumeLoaded(true);
         }
@@ -381,15 +394,13 @@ export default function ComparisonModal() {
   // 현재 orientation에 맞는 수정된 슬라이스 인덱스 가져오기
   const getInitialSlice = (dir: ViewOrientation) => {
     if (!editedSliceInfo) {
-      console.log('getInitialSlice: editedSliceInfo is null');
       return undefined;
     }
-    let slice: number | undefined;
-    if (dir === 'axial') slice = editedSliceInfo.axialSlice;
-    else if (dir === 'coronal') slice = editedSliceInfo.coronalSlice;
-    else if (dir === 'sagittal') slice = editedSliceInfo.sagittalSlice;
-    console.log('getInitialSlice:', { dir, slice, editedSliceInfo });
-    return slice;
+    // 각 뷰에 맞는 슬라이스 반환
+    if (dir === 'axial') return editedSliceInfo.axialSlice;
+    if (dir === 'coronal') return editedSliceInfo.coronalSlice;
+    if (dir === 'sagittal') return editedSliceInfo.sagittalSlice;
+    return undefined;
   };
 
   // 뷰 방향 상태

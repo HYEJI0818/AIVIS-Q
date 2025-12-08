@@ -39,6 +39,13 @@ export default function DrawSegmentationModal() {
   const [isMaskLoaded, setIsMaskLoaded] = useState(false);
   const [maskBrushSize, setMaskBrushSize] = useState(2);
   
+  // 각 뷰별 마지막 슬라이스 추적 (저장 시 사용)
+  const [lastSlices, setLastSlices] = useState({
+    axial: 50,
+    coronal: 50,
+    sagittal: 50
+  });
+  
   // ============================================
   // Refs
   // ============================================
@@ -49,6 +56,7 @@ export default function DrawSegmentationModal() {
   const volumeDimsRef = useRef<number[]>([0, 0, 0, 0]);
   const currentVoxelRef = useRef<number[]>([0, 0, 0]);
   const prevVoxelRef = useRef<number[] | null>(null); // 이전 voxel 위치 (보간용)
+  
 
   // ============================================
   // Niivue 초기화
@@ -120,25 +128,44 @@ export default function DrawSegmentationModal() {
       nv.setSliceType(nv.sliceTypeSagittal);
     }
     
-    // 슬라이스 범위 업데이트
+    // 슬라이스 범위 업데이트 및 저장된 슬라이스로 이동
     if (nv.volumes.length > 0) {
       const volume = nv.volumes[0];
       const dims = volume.dims;
       if (dims && dims.length >= 4) {
         volumeDimsRef.current = dims;
+        let newMaxSlice = 100;
+        let savedSlice = 0;
+        
         if (viewTab === 'axial') {
-          setMaxSlice(dims[3] - 1);
-          setSliceIndex(Math.floor(dims[3] / 2));
+          newMaxSlice = dims[3] - 1;
+          savedSlice = lastSlices.axial;
         } else if (viewTab === 'coronal') {
-          setMaxSlice(dims[2] - 1);
-          setSliceIndex(Math.floor(dims[2] / 2));
+          newMaxSlice = dims[2] - 1;
+          savedSlice = lastSlices.coronal;
         } else if (viewTab === 'sagittal') {
-          setMaxSlice(dims[1] - 1);
-          setSliceIndex(Math.floor(dims[1] / 2));
+          newMaxSlice = dims[1] - 1;
+          savedSlice = lastSlices.sagittal;
         }
+        
+        setMaxSlice(newMaxSlice);
+        // 저장된 슬라이스가 범위 내에 있으면 사용, 아니면 중앙값
+        const targetSlice = savedSlice <= newMaxSlice ? savedSlice : Math.floor(newMaxSlice / 2);
+        setSliceIndex(targetSlice);
+        
+        // crosshairPos도 업데이트
+        const scene = nv.scene;
+        if (viewTab === 'axial') {
+          scene.crosshairPos[2] = targetSlice / newMaxSlice;
+        } else if (viewTab === 'coronal') {
+          scene.crosshairPos[1] = targetSlice / newMaxSlice;
+        } else if (viewTab === 'sagittal') {
+          scene.crosshairPos[0] = targetSlice / newMaxSlice;
+        }
+        nv.updateGLVolume();
       }
     }
-  }, [viewTab, isNiivueReady]);
+  }, [viewTab, isNiivueReady, lastSlices]);
 
   // ============================================
   // CT 및 마스크 파일 로드
@@ -149,6 +176,7 @@ export default function DrawSegmentationModal() {
     const loadFiles = async () => {
       setIsLoading(true);
       setIsMaskLoaded(false);
+      
       try {
         const nv = nvRef.current!;
 
@@ -216,22 +244,35 @@ export default function DrawSegmentationModal() {
           nv.setSliceType(nv.sliceTypeSagittal);
         }
 
-        // 슬라이스 범위 업데이트
+        // 슬라이스 범위 업데이트 및 lastSlices 초기화
         const volumes = nv.volumes;
         if (volumes.length > 0) {
           const volume = volumes[0];
           const dims = volume.dims;
           if (dims && dims.length >= 4) {
             volumeDimsRef.current = dims;
+            
+            // 각 뷰의 중앙 슬라이스 계산
+            const axialMid = Math.floor(dims[3] / 2);
+            const coronalMid = Math.floor(dims[2] / 2);
+            const sagittalMid = Math.floor(dims[1] / 2);
+            
+            // lastSlices 초기화 (모든 뷰의 중앙값으로)
+            setLastSlices({
+              axial: axialMid,
+              coronal: coronalMid,
+              sagittal: sagittalMid
+            });
+            
             if (viewTab === 'axial') {
               setMaxSlice(dims[3] - 1);
-              setSliceIndex(Math.floor(dims[3] / 2));
+              setSliceIndex(axialMid);
             } else if (viewTab === 'coronal') {
               setMaxSlice(dims[2] - 1);
-              setSliceIndex(Math.floor(dims[2] / 2));
+              setSliceIndex(coronalMid);
             } else if (viewTab === 'sagittal') {
               setMaxSlice(dims[1] - 1);
-              setSliceIndex(Math.floor(dims[1] / 2));
+              setSliceIndex(sagittalMid);
             }
           }
         }
@@ -476,6 +517,12 @@ export default function DrawSegmentationModal() {
   const handleSliceChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newSlice = parseInt(e.target.value);
     setSliceIndex(newSlice);
+    
+    // 현재 뷰의 마지막 슬라이스 기록
+    setLastSlices(prev => ({
+      ...prev,
+      [viewTab]: newSlice
+    }));
 
     if (nvRef.current && nvRef.current.volumes.length > 0) {
       const nv = nvRef.current;
@@ -537,25 +584,24 @@ export default function DrawSegmentationModal() {
     try {
       const nv = nvRef.current;
       
-      // drawBitmap을 복사해서 저장 (Niivue 방식)
+      // drawBitmap을 복사해서 저장
       const copiedData = new Uint8Array(nv.drawBitmap!);
       setEditedMaskData(copiedData);
       
-      // 마지막으로 수정한 voxel의 3D 좌표를 사용하여 모든 뷰의 슬라이스 계산
-      // currentVoxelRef: [x(sagittal), y(coronal), z(axial)]
-      const lastVoxel = currentVoxelRef.current;
-      const sagittalSlice = lastVoxel[0]; // X 좌표
-      const coronalSlice = lastVoxel[1];  // Y 좌표
-      const axialSlice = lastVoxel[2];    // Z 좌표
+      // 현재 뷰의 슬라이스를 lastSlices에 업데이트 (저장 시점의 슬라이스)
+      const finalSlices = {
+        ...lastSlices,
+        [viewTab]: sliceIndex
+      };
       
+      // 각 뷰별 마지막 슬라이스 저장
       setEditedSliceInfo({
-        axialSlice,
-        coronalSlice,
-        sagittalSlice
+        axialSlice: finalSlices.axial,
+        coronalSlice: finalSlices.coronal,
+        sagittalSlice: finalSlices.sagittal
       });
       
-      console.log('수정된 마스크가 Store에 저장되었습니다. 크기:', copiedData.length, 
-        'voxel:', lastVoxel, 'axial:', axialSlice, 'coronal:', coronalSlice, 'sagittal:', sagittalSlice);
+      console.log('수정된 마스크 저장 완료!', finalSlices);
       alert('수정된 마스크가 저장되었습니다!');
     } catch (error) {
       console.error('마스크 저장 실패:', error);

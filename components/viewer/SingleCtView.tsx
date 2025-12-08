@@ -309,24 +309,32 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
         nv.drawBitmap!.set(editedMaskData);
         nv.refreshDrawing();
         
-        // 수정한 슬라이스로 이동 (모든 뷰어에서)
-        if (editedSliceInfo) {
+        // 각 뷰별로 수정한 슬라이스로 이동
+        if (editedSliceInfo && nv.volumes.length > 0) {
           const scene = nv.scene;
-          let targetSlice = 0;
+          const dims = nv.volumes[0].dims;
           
-          if (orientation === 'axial') {
-            targetSlice = editedSliceInfo.axialSlice;
-            scene.crosshairPos[2] = targetSlice / maxSlice;
-          } else if (orientation === 'coronal') {
-            targetSlice = editedSliceInfo.coronalSlice;
-            scene.crosshairPos[1] = targetSlice / maxSlice;
-          } else if (orientation === 'sagittal') {
-            targetSlice = editedSliceInfo.sagittalSlice;
-            scene.crosshairPos[0] = targetSlice / maxSlice;
+          if (dims && dims.length >= 4) {
+            let actualMaxSlice = maxSlice;
+            let targetSlice = 0;
+            
+            if (orientation === 'axial') {
+              actualMaxSlice = dims[3] - 1;
+              targetSlice = Math.min(editedSliceInfo.axialSlice, actualMaxSlice);
+              scene.crosshairPos[2] = actualMaxSlice > 0 ? targetSlice / actualMaxSlice : 0.5;
+            } else if (orientation === 'coronal') {
+              actualMaxSlice = dims[2] - 1;
+              targetSlice = Math.min(editedSliceInfo.coronalSlice, actualMaxSlice);
+              scene.crosshairPos[1] = actualMaxSlice > 0 ? targetSlice / actualMaxSlice : 0.5;
+            } else if (orientation === 'sagittal') {
+              actualMaxSlice = dims[1] - 1;
+              targetSlice = Math.min(editedSliceInfo.sagittalSlice, actualMaxSlice);
+              scene.crosshairPos[0] = actualMaxSlice > 0 ? targetSlice / actualMaxSlice : 0.5;
+            }
+            
+            setCurrentSlice(targetSlice);
+            console.log(`${title}: 수정한 슬라이스 ${targetSlice}로 이동`);
           }
-          
-          setCurrentSlice(targetSlice);
-          console.log(`${title}: 수정한 슬라이스 ${targetSlice}로 이동`);
         }
         
         nv.updateGLVolume();

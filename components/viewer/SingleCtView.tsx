@@ -106,30 +106,32 @@ export default function SingleCtView({ id, title, orientation, maskOnly = false 
         crosshairWidth: 0, // 십자선 숨김
         isColorbar: false,
         textHeight: 0.03,
-        onLocationChange: (location: { mm: number[]; vox: number[]; frac: number[] }) => {
-          // 마우스 휠 등으로 슬라이스가 변경될 때 슬라이더 동기화
-          const currentNv = nvRef.current;
-          if (!currentNv || currentNv.volumes.length === 0) return;
-          
-          const dims = currentNv.volumes[0].dims;
-          if (!dims || dims.length < 4) return;
-          
-          let newSlice = 0;
-          if (orientation === 'axial' && dims[3] > 0) {
-            newSlice = Math.round(location.frac[2] * (dims[3] - 1));
-            setCurrentSlice(newSlice);
-          } else if (orientation === 'coronal' && dims[2] > 0) {
-            newSlice = Math.round(location.frac[1] * (dims[2] - 1));
-            setCurrentSlice(newSlice);
-          } else if (orientation === 'sagittal' && dims[1] > 0) {
-            newSlice = Math.round(location.frac[0] * (dims[1] - 1));
-            setCurrentSlice(newSlice);
-          }
-        },
       });
 
       nv.attachToCanvas(canvasRef.current);
       nvRef.current = nv;
+
+      // 마우스 휠 등으로 슬라이스가 변경될 때 슬라이더 동기화
+      nv.onLocationChange = (loc: unknown) => {
+        const location = loc as { mm: number[]; vox: number[]; frac: number[] };
+        const currentNv = nvRef.current;
+        if (!currentNv || currentNv.volumes.length === 0) return;
+        
+        const dims = currentNv.volumes[0].dims;
+        if (!dims || dims.length < 4) return;
+        
+        let newSlice = 0;
+        if (orientation === 'axial' && dims[3] > 0) {
+          newSlice = Math.round(location.frac[2] * (dims[3] - 1));
+          setCurrentSlice(newSlice);
+        } else if (orientation === 'coronal' && dims[2] > 0) {
+          newSlice = Math.round(location.frac[1] * (dims[2] - 1));
+          setCurrentSlice(newSlice);
+        } else if (orientation === 'sagittal' && dims[1] > 0) {
+          newSlice = Math.round(location.frac[0] * (dims[1] - 1));
+          setCurrentSlice(newSlice);
+        }
+      };
 
       // Orientation 설정
       if (orientation === 'axial') {
